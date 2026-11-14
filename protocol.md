@@ -200,11 +200,19 @@ inside a fragment ([§9.3](#93-what-a-fragment-may-not-contain)), so there are n
 ## 4. Addressing components
 
 A region request names its server component by an **address**: a string of
-one or more lower-case segments joined by dots. Each segment MUST match
-`[a-z][a-z0-9_]*`. For example:
+one or more lower-case segments joined by dots. Each segment starts with a
+letter and may then hold letters, digits, underscores and hyphens. An
+address MUST match:
+
+```
+^[a-z][a-z0-9_-]*(\.[a-z][a-z0-9_-]*)*$
+```
+
+For example:
 
 ```
 app.native.components.sales_summary
+reports.sales-chart
 home
 ```
 

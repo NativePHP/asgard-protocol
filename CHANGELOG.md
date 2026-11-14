@@ -1,5 +1,10 @@
 # Changelog
 
+## Draft 3 (unreleased)
+
+- Address segments may contain hyphens (§4), so `reports.sales-chart` is a
+  valid address. A segment still starts with a letter.
+
 ## Draft 2 (2026-11-14)
 
 - The transport probe uses only a safe request (a region request with no
