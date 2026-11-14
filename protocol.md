@@ -5,7 +5,7 @@
 This draft is not stable. It may change in incompatible ways before 1.0.
 Please send feedback as issues on this repository.
 
-Asgard lets a server render part of a native mobile app's UI. A client app
+Asgard lets a server render part of a native app's UI. A client app
 marks a region of a screen as server-rendered, sends its state to a server, and
 gets back a description of a native element subtree to paint in place. A
 server can also own whole screens inside the app's shell, with their own
@@ -91,7 +91,7 @@ The client owns the shell and its own screens. The server may own screens
 inside that shell.
 
 It is not a remote screen. A dev bridge that mirrors a whole screen from a
-dev machine renders every frame there, ships full view state to the device,
+dev machine renders every frame there, ships full view state to the client,
 and keeps state on the dev box.
 
 Asgard inverts that. The **client owns the shell**: the app, its navigation
@@ -112,7 +112,7 @@ the wire is always the fragment JSON of [§9](#9-fragment-format).
 
 | Term | Meaning |
 |---|---|
-| **Client** | The mobile app, including whatever it uses for rendering, transport, sessions and crypto. |
+| **Client** | A native app on any kind of device, including whatever it uses for rendering, transport, sessions and crypto. |
 | **Server** | Any HTTPS server implementing this document. |
 | **Region** | A named, server-rendered part of a client screen. |
 | **Client component** | The part of a client screen that declares a region. It owns the state and renders the placeholder. |
@@ -164,7 +164,8 @@ platform:
  "state":{"period":"week"},"platform":"ios"}
 ```
 
-`platform` is `ios` or `android` in this version. The answer carries the
+`platform` names the operating system the client runs on: `ios` or
+`android` in this version. The answer carries the
 region's fragment ([§9](#9-fragment-format)) and its version token ([§8.1](#81-the-push-stream)):
 
 ```json
@@ -203,7 +204,7 @@ per region, each shaped like a single answer's:
 A server screen's part carries `chrome` too. The counters for every
 region's token MUST be read once, before any of them renders.
 
-On the device each region in a batch is still its own request, with its own
+In the client each region in a batch is still its own request, with its own
 timer and its own supersede rule. The client delivers each part as if it had
 been asked for alone. A region the answer left out MUST fail with reason
 `invalid`. When a batch fails as a whole, every region in it fails and each
@@ -302,7 +303,7 @@ locally, and sends with each region request.
 
 It is **untrusted input**. The signature in [§7](#7-security) proves it arrived intact from a
 holder of a valid session. It does not prove the values are true, because the
-client that produced them is a program on someone else's device. A server MUST
+client that produced them runs outside the server's control. A server MUST
 authorise every action against the authenticated identity from [§7.5](#75-authentication-is-separate), never
 against something the state claims.
 
@@ -700,7 +701,7 @@ them. A 200-row list fragment of about 52 KB went over the wire as 2.4 KB.
 - A client inflates in small steps and MUST give up as soon as the output
   passes **8 MiB** (8,388,608 bytes). Going over is a failure like a bad
   signature ([§6.3](#63-loss)). No real fragment comes near it, and it stops a small body
-  from expanding into one that exhausts the device's memory.
+  from expanding into one that exhausts the client's memory.
 
 **When to turn it off.** Compressing a body that holds both a secret and text
 someone else can choose leaks the secret through the body's length. That is
@@ -711,7 +712,7 @@ size of the answer can recover the secret a character at a time.
 
 So a server SHOULD turn compression off for a region whose fragment shows a
 secret, such as a token, a recovery code or a full account number, next to
-text that another person or the device can choose. That is the BREACH-style
+text that another person or the client can choose. That is the BREACH-style
 risk: the secret and the attacker's guess share one compressed body, and the
 body's length gives the guess away. When a region has compression turned off,
 its responses and events MUST go out as plain `aes128gcm`. A region that shows
@@ -826,9 +827,9 @@ Two more rules:
 
 ### 8.1 The push stream
 
-A client holds one Server-Sent Events stream ([SSE](https://html.spec.whatwg.org/multipage/server-sent-events.html)) open per device, so the
+A client holds one Server-Sent Events stream ([SSE](https://html.spec.whatwg.org/multipage/server-sent-events.html)) open at a time, so the
 server can say a region changed without being asked. The stream carries a
-**subscription** for each component instance the device has on screen, and
+**subscription** for each component instance it has on screen, and
 nothing else.
 
 By default the stream renders nothing. When a region changes it sends a
@@ -839,12 +840,12 @@ and for those the stream sends the fragment inline instead. Shared is
 opt-in, so a region left unmarked costs a round trip, never a leak.
 
 **Cost.** On many servers an open stream holds a worker process or thread for
-its whole lifetime. That is why a device opens one stream, not one per
-component, and why it drops what is no longer on screen. A device with no
+its whole lifetime. That is why a client opens one stream, not one per
+component, and why it drops what is no longer on screen. A client with no
 server regions on screen holds no stream at all.
 
 **Opening it.** `{base}/stream`, in either form from [§8](#8-transport). The body
-lists every subscription the device wants:
+lists every subscription the client wants:
 
 ```json
 {"protocol":1,"platform":"ios","subscriptions":[
@@ -880,7 +881,7 @@ read per poll.
 The request MUST be sealed exactly like a region request ([§7.3](#73-signatures), [§7.4](#74-encryption)). It is a
 read, so it has no nonce.
 
-**The device declares the whole set.** The client works the set out from what
+**The client declares the whole set.** The client works the set out from what
 is on screen: for each live component instance, each region that holds a
 fragment from a good answer, grouped by address and by the state the answer
 was rendered for. Only answered regions are watched, so a session already
@@ -1046,12 +1047,12 @@ It does not return any client's in-memory node layout.
 
 This is forced. A client's own render format is its business. It may number
 element types in the order it meets them, lay nodes out in its own byte
-order, or change between builds. A server also cannot know the device's
+order, or change between builds. A server also cannot know the client's
 platform-specific icon names, its platform style variants, or which fonts
 are in its bundle.
 
 So the server emits names and the **client encodes**. The client resolves
-types, icons and platform variants for the device it is actually running on,
+types, icons and platform variants for the platform it is actually running on,
 and builds its own render tree. One encode per fragment, in exchange for a
 payload that is immune to byte order, platform, and format version drift.
 
@@ -1172,7 +1173,7 @@ way.
 ### 9.6 Media URLs
 
 In an app's own UI, a relative path can mean an asset the app shipped, and an
-absolute path can mean a file on the device. From a server neither means what
+absolute path can mean a local file. From a server neither means what
 its author meant, and a server should not be able to point at the app's
 files at all.
 
@@ -1202,7 +1203,7 @@ instead of being cached once.
 The client's own UI is not affected. It resolves its own media as it always
 has.
 
-**Media is public.** The device loads these URLs itself, with no Asgard
+**Media is public.** The client loads these URLs itself, with no Asgard
 session and none of the user's auth. Anything private needs a URL that
 carries its own permission, such as a signed URL that expires.
 
@@ -1437,7 +1438,7 @@ action names it as well.
 ```
 
 Each part is shaped like a batch part ([§3.1](#31-when-the-client-asks)). Its token MUST be read after the
-method runs and before anything renders. The device MUST paint a part only on
+method runs and before anything renders. The client MUST paint a part only on
 the instance that sent the request, and only when that instance drew the
 region. It MUST skip a region with a request that went out after this one,
 because that answer is newer. A painted part supersedes any older request
@@ -1445,7 +1446,7 @@ for its region still in flight. Each part MUST be checked as a region render is
 ([§9.4](#94-fragments-the-client-cannot-render)), and one that is refused is not surfaced as a failure. A name that is
 not a region of the component is a server error, and the server answers `500`.
 
-**Other components on this phone, a hint.** The method names another
+**Other components in this client, a hint.** The method names another
 component's address and at most one of its regions. Leaving the region out
 means all of them. The server does not have that component's state, so it
 does not render it. It only names it, after checking the address and region
@@ -1460,13 +1461,13 @@ exist:
 A hint for a whole component covers hints for its regions, and an answer
 MUST carry at most 16 hints and 16 inline regions.
 
-On the device a hint is handled like a stream signal ([§8.1](#81-the-push-stream)): every live
+In the client a hint is handled like a stream signal ([§8.1](#81-the-push-stream)): every live
 instance at that address that drew the region is marked, and fetches it with
 its own current state after its next frame. An instance on a covered screen
 fetches when that screen is drawn again. A hint for a region nobody drew, or
 for a screen that has closed, does nothing.
 
-**Other phones.** The server pushes ([§8.1](#81-the-push-stream)). A hint only reaches the phone that
+**Other clients.** The server pushes ([§8.1](#81-the-push-stream)). A hint only reaches the client that
 sent the request.
 
 `fragments` and `refresh` MUST be present only when the method asked for them.
@@ -1503,11 +1504,11 @@ user input. A covered screen's timers wait until it is on top again.
 
 ### 10.3 Client actions
 
-`"target": "client"` asks the device to run a method of its own. This is how a
+`"target": "client"` asks the client to run a method of its own. This is how a
 server-drawn button opens a sheet, plays a sound, or changes something on the
 screen around the region without a round trip.
 
-The server names the method, but the app decides whether it may. The device
+The server names the method, but the app decides whether it may. The client
 MUST run `call` only when:
 
 - the method belongs to the component that owns the region;
@@ -1517,14 +1518,14 @@ MUST run `call` only when:
 - it takes plain JSON values, in order, with nothing looked up from them,
   as in [§10.2](#102-server-actions-the-default).
 
-If any of these fail, nothing runs and the device logs it. It **MUST NOT** fall
+If any of these fail, nothing runs and the client logs it. It **MUST NOT** fall
 back to sending the call to the server. A misspelt client action that quietly
 became a server call would change where code runs without anyone noticing.
 
 The client's own machinery is out of reach. A fragment cannot name a method
 the client uses to navigate, raise events or sync state, and [§9.3](#93-what-a-fragment-may-not-contain) keeps props
 from binding one. The one way a fragment moves the app is the navigation slot
-in [§12.4](#124-navigation), which the device checks against its own routes.
+in [§12.4](#124-navigation), which the client checks against its own routes.
 
 **What this leaves a hostile server.** It can only trigger what the app chose
 to expose to servers, and it could already draw a button the user would tap.
@@ -1589,11 +1590,11 @@ is worked out, and `refresh`, the hints for other components:
   "fragment": {"type": "text", "props": {"text": "4"}}}}}
 ```
 
-The device MUST apply the delta first, then paint the regions on the calling
+The client MUST apply the delta first, then paint the regions on the calling
 instance under the rules of [§10.2](#102-server-actions-the-default), then handle the hints, and only then hand
 the result to the app code that made the call. A call answer MUST NOT be
 compressed, fragments or not, since the delta can mix the server's values with
-text the device chose ([§7.4](#74-encryption)).
+text the client chose ([§7.4](#74-encryption)).
 
 The delta may change state members the app does not let its own UI write.
 That restriction binds the client's UI, not the server. The client MUST apply
@@ -1614,7 +1615,7 @@ Failures and timeouts are as in [§10.2](#102-server-actions-the-default), with 
 The app can send a file to a method on the server component. The server
 method is exposed for uploads, a list of its own, apart from actions and
 method calls. It receives the file, then the args, which are checked as an
-action's are. There is no matching method on the device and no client body.
+action's are. There is no matching client method and no client body.
 The request carries the component's state as it is when the upload starts.
 
 It goes to `{base}/upload`, signed and encrypted like everything else and with
@@ -1640,14 +1641,14 @@ on the wire stays `application/json`, as the signature in [§7.3](#73-signatures
 the body is opaque until it is decrypted. Requests are never compressed
 ([§7.4](#74-encryption)), and files are usually compressed already.
 
-`filename` and `mime` are what the device says, and the server MUST NOT trust
+`filename` and `mime` are what the client says, and the server MUST NOT trust
 either. It MUST sniff the type from the bytes and check it against the types
 the method accepts. It MUST write the bytes to a temporary file it names
 itself, and keep the filename, cleaned, only as the file's original name. It
 deletes the temporary file when the method returns.
 
 The answer is a call's ([§10.5](#105-method-calls)): `{"protocol": 1, "delta": {...}}`, plus
-`fragments` and `refresh` when the method asked for them. The device
+`fragments` and `refresh` when the method asked for them. The client
 handles it exactly as it does a call's: the delta under compare-and-set,
 then the regions, then the hints.
 
@@ -1673,7 +1674,7 @@ A file the server finds too big or the wrong type is `server`, with status 413
 or 415.
 
 An upload waits for its answer longer than an action does, since 20 MB on a
-mobile network can take a while. 120 seconds is RECOMMENDED, with the HTTP
+slow network can take a while. 120 seconds is RECOMMENDED, with the HTTP
 timeout of the transport longer again, so the client's own timer fires first.
 
 A client holds the whole file in memory to seal it, since [§7.4](#74-encryption) encrypts the
@@ -1701,7 +1702,7 @@ routes ([§12.3](#123-routes)), and resolves a screen address through the same d
 table as any component address ([§4](#4-addressing-components)): nothing from the wire names code. Two
 screens MUST NOT share a route or an address.
 
-On the device a server route always opens one generic screen that the client
+In the client a server route always opens one generic screen that the client
 provides for server screens. It MUST NOT open one of the app's own screens, so
 a server cannot point a route at app code. Its body is a single region named
 `screen`, so everything in [§3](#3-regions), [§8.1](#81-the-push-stream) and [§10](#10-events) applies unchanged:
@@ -1914,13 +1915,13 @@ there is no way to leave the app.
    Settled: the handshake is an ephemeral P-256 ECDH exchange, in the spirit
    of [RFC 8291](https://www.rfc-editor.org/rfc/rfc8291), and the secret never crosses the wire ([§6.1](#61-handshake)). An active
    attacker that terminates TLS is still TLS's to stop ([§7.1](#71-threat-model)).
-7. The push stream holds a server worker or connection per device for its
-   lifetime ([§8.1](#81-the-push-stream)). One stream per device keeps that to one each, but a
-   server with many devices on server regions at once still needs one per
-   device. Whether pushes should move to something built to hold many idle
+7. The push stream holds a server worker or connection per client for its
+   lifetime ([§8.1](#81-the-push-stream)). One stream per client keeps that to one each, but a
+   server with many clients on server regions at once still needs one per
+   client. Whether pushes should move to something built to hold many idle
    connections (a separate event service fed by the push counters, say) is
    open.
-8. Bursts after a wide push. A push to a channel many devices joined sends
+8. Bursts after a wide push. A push to a channel many clients joined sends
    each of them a signal at about the same time, and each fetches the region
    at once. Whether clients should spread those fetches out (a random delay
    of a second or two, say) is open.

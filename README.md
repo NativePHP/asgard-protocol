@@ -1,6 +1,6 @@
 # The Asgard Protocol
 
-Asgard lets a server render parts of a native mobile app's UI. The app marks a region of a screen as server-rendered, sends its state to a server, and paints the description of native elements that comes back. A server can also own whole screens inside the app.
+Asgard lets a server render parts of a native app's UI. The app marks a region of a screen as server-rendered, sends its state to a server, and paints the description of native elements that comes back. A server can also own whole screens inside the app.
 
 The app stays in charge. It ships its own screens, works offline, and only asks a server about the regions and routes it has been told to. The server sends a description of elements, never code.
 

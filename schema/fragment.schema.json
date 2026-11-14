@@ -3,7 +3,7 @@
   "$id": "fragment.schema.json",
   "title": "Asgard fragment (tree/json)",
   "description": "A fragment a server returns for a region: one node, or an array of nodes. See protocol.md §9 and §10.",
-  "$comment": "Rules from §9, §10 and §12.4 that this schema cannot check: (1) A fragment may use only the core types of §9.7 plus the types the client listed in `elements` at the handshake (§6.1, §9.3). That depends on the session, so this schema does not list types at all; it only checks a type's shape. (2) A client refuses a fragment nested deeper than 64 levels (§9.1). JSON Schema has no way to count depth, so that is not checked here. (3) Unknown members of a node, and unknown props, are ignored (§5.3), so this schema allows them. Callback slots and navigations refuse unknown members, and so does this schema. (4) Props of a known type with the wrong value type are treated as absent by the client (§9.7); this schema only checks media URLs. (5) `navigate` must match a route the device knows when tapped (§12.4). (6) `navigate` and media URLs are limited to 2048 bytes; maxLength counts characters, so a value with multi-byte characters can pass here and still be too long. (7) A client may accept `http:` media URLs in a development build (§9.6); this schema allows https only. (8) Keys must be unique among siblings, compared as strings (§9.1).",
+  "$comment": "Rules from §9, §10 and §12.4 that this schema cannot check: (1) A fragment may use only the core types of §9.7 plus the types the client listed in `elements` at the handshake (§6.1, §9.3). That depends on the session, so this schema does not list types at all; it only checks a type's shape. (2) A client refuses a fragment nested deeper than 64 levels (§9.1). JSON Schema has no way to count depth, so that is not checked here. (3) Unknown members of a node, and unknown props, are ignored (§5.3), so this schema allows them. Callback slots and navigations refuse unknown members, and so does this schema. (4) Props of a known type with the wrong value type are treated as absent by the client (§9.7); this schema only checks media URLs. (5) `navigate` must match a route the client knows when tapped (§12.4). (6) `navigate` and media URLs are limited to 2048 bytes; maxLength counts characters, so a value with multi-byte characters can pass here and still be too long. (7) A client may accept `http:` media URLs in a development build (§9.6); this schema allows https only. (8) Keys must be unique among siblings, compared as strings (§9.1).",
   "oneOf": [
     { "$ref": "#/$defs/node" },
     {
@@ -30,7 +30,7 @@
         "props": { "$ref": "#/$defs/props" },
         "class": {
           "type": "string",
-          "description": "Space-separated style utility names, resolved on the device (§9.7)."
+          "description": "Space-separated style utility names, resolved by the client (§9.7)."
         },
         "on_press": { "$ref": "#/$defs/pressSlot" },
         "on_long_press": { "$ref": "#/$defs/pressSlot" },
@@ -96,7 +96,7 @@
       }
     },
     "mediaUrl": {
-      "description": "A URL the device loads: an absolute https URL with a host. null or an empty string mean no image, as does leaving the prop out (§9.6).",
+      "description": "A URL the client loads: an absolute https URL with a host. null or an empty string mean no image, as does leaving the prop out (§9.6).",
       "oneOf": [
         { "type": "null" },
         {
@@ -120,7 +120,7 @@
     },
     "call": {
       "type": "object",
-      "description": "Runs a method. On the server by default, or on the device with target client (§10.2, §10.3). Unknown members are refused (§5.3).",
+      "description": "Runs a method. On the server by default, or in the client with target client (§10.2, §10.3). Unknown members are refused (§5.3).",
       "required": ["call"],
       "properties": {
         "call": {

@@ -11,6 +11,9 @@
   whether to replace it before 1.0.
 - The References list is tidied, and adds RFC 3986, 8259, 8446, 9112, 9113,
   9114 and 9325.
+- The spec talks about servers and clients only. A client is a native app on
+  any kind of device, so "device" and "phone" are gone from the text and the
+  schema. No wire change.
 
 ## Draft 2 (2026-11-14)
 
