@@ -2,6 +2,14 @@
 
 ## Draft 2 (unreleased)
 
+- The transport probe uses only a safe request (a region request with no
+  action, or the route list), and other requests go as POST plus the header
+  until it settles. An unsigned answer counts for the probe only if its body
+  matches the §7.3 table, so a firewall's 403 is not taken as Asgard's (§8).
+- `{base}` may be `http:` in a development build, as media URLs may (§8).
+- Reserved type names for chrome and regions are listed in §9.3, and
+  `elements` has size limits (§6.1). A server ignores a reserved name in
+  `elements` rather than refusing the handshake.
 - The spec no longer names any language, framework or package. Code samples
   are replaced by wire examples, and concepts are described by what crosses
   the wire and what each side must do.

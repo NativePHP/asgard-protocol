@@ -319,8 +319,11 @@ ones. It never carries `X-Asgard-Method`:
   refused with 422.
 - `elements` lists the element types the client can render beyond the core
   set ([§9.7](#97-element-types)). It MUST be an array of distinct type names, each matching
-  `^[a-z][a-z0-9_]*$`. It MAY be empty or absent, which means core types
-  only. It MUST NOT name a chrome type ([§9.3](#93-what-a-fragment-may-not-contain)). The server keeps it with the
+  `^[a-z][a-z0-9_]*$` and at most 64 characters long, with at most 256
+  entries. It MAY be empty or absent, which means core types only. A server
+  MUST refuse an `elements` that breaks these rules with 422. It MUST NOT
+  name a reserved type ([§9.3](#93-what-a-fragment-may-not-contain)), and a server MUST ignore one that does
+  rather than refuse the handshake. The server keeps it with the
   session and MUST NOT send a fragment that uses a type outside the core
   set and this list ([§9.3](#93-what-a-fragment-may-not-contain)).
 - `session` is an opaque identifier. It goes in a header on every later
@@ -549,7 +552,7 @@ claimed. These are all of them:
 
 | Status | Body | When |
 |---|---|---|
-| 405 | `{"error":"method_not_allowed"}` | The request used a method the endpoint does not accept: on `{base}/session` anything but POST, elsewhere anything other than QUERY, or POST with `X-Asgard-Method: QUERY` ([§8](#8-transport)). |
+| 405 | `{"error":"method_not_allowed"}` | The request used a method the endpoint does not accept: on `{base}/session` anything but POST, and elsewhere anything but QUERY or a POST with `X-Asgard-Method: QUERY` ([§8](#8-transport)). |
 | 413 | `{"error":"too_large"}` | An upload the server can tell is too big from its size alone ([§10.6](#106-uploads)). |
 | 419 | `{"error":"session_expired"}` | `Asgard-Session-Id` is missing, unknown or expired ([§6.3](#63-loss)). |
 | 403 | `{"error":"forbidden"}` | A check in [§7.6](#76-rejecting-early) failed: the digest, the signature or its freshness, a reused nonce, or decryption. |
@@ -558,7 +561,9 @@ claimed. These are all of them:
 A body MAY also carry a `message` string for logs. A client MUST act on the
 status of an unsigned answer only: to fall back on a 405 to the first QUERY
 request after a handshake ([§8](#8-transport)), to re-handshake on 419, and to
-stop on 403 or 413. It MUST NOT read anything else from it. An unsigned answer
+stop on 403 or 413. It MUST NOT read anything else from it, with one
+exception: while it probes the transport, it checks that the body is the one
+this table gives for that status ([§8](#8-transport)). An unsigned answer
 with any other status is a failure like a bad signature ([§6.3](#63-loss)).
 
 Clock skew: `created` MAY be up to 60 seconds in the future, and `expires`
@@ -675,7 +680,10 @@ and the same holds for pushed events ([§8.1](#81-the-push-stream)).
 
 A client is configured with one base URL for its server, written `{base}`
 in this document: an `https:` URL with no query or fragment, such as
-`https://api.example.com/asgard`. Every endpoint is a path below it:
+`https://api.example.com/asgard`. A client MAY also accept an `http:` base
+in a development build, for a server on a developer's machine, as for media
+URLs ([§9.6](#96-media-urls)). A production build MUST NOT. Every endpoint is
+a path below it:
 
 | Endpoint | Used for |
 |---|---|
@@ -709,8 +717,12 @@ endpoint takes QUERY or its fallback.
 A server cannot know whether something in front of it blocks QUERY. So
 transport is probed by the client, not negotiated:
 
-1. The client sends its first request after the handshake (a region
-   request, the route list, or whichever comes first) as **QUERY**.
+1. The client sends its first **safe** request after the handshake as
+   **QUERY**. A safe request is a region request with no action, or the
+   route list. Until the probe has settled, every other request (an action,
+   a method call, an upload, the push stream) goes as POST plus
+   `X-Asgard-Method: QUERY`. That way a request that changes something on
+   the server is never sent twice.
 2. If the answer is a 405, a 501, or anything that is not a valid Asgard
    answer, the client MUST send that request again as **POST plus
    `X-Asgard-Method: QUERY`**, signed afresh, since the method is a covered
@@ -719,7 +731,10 @@ transport is probed by the client, not negotiated:
    it for every later request except the handshake.
 
 A valid Asgard answer is a response sealed as [§7.3](#73-signatures) says, or
-one of the unsigned early rejections listed there other than 405. A network
+one of the unsigned early rejections listed there other than 405, with the
+body that table gives for its status. The body check matters: a firewall
+that blocks QUERY often answers 403, and a client that took any 403 as
+Asgard's would remember QUERY as working. A network
 failure is not an answer: the client tries QUERY again on its next request.
 When the POST form fails too, that request has failed with the usual reason
 ([§10.2](#102-server-actions-the-default)), and the client remembers
@@ -1048,6 +1063,13 @@ A fragment describes a subtree inside a region. It is not a screen.
   fragment. And a type that **declares a region** is never one either:
   regions are declared by the client, in its own UI, and a server MUST NOT
   create one.
+
+  These type names are reserved for those two kinds, so that both sides can
+  recognise them: `top_bar`, `top_bar_action`, `top_bar_title`, `bottom_nav`,
+  `bottom_nav_item`, `bottom_bar`, `side_nav`, `side_nav_item`,
+  `side_nav_group`, `side_nav_header`, `native_drawer`, `fab` and
+  `server_region`. A client that has a chrome or region type by another name
+  MUST NOT advertise it either.
 - **Props are presentational.** `props` is written by a server, so no prop
   may choose a method to run, bind a callback, move the app, or set a node's
   identity. Callbacks come only from slots ([§10.1](#101-callback-slots), [§12.4](#124-navigation)), and identity only
