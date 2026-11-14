@@ -27,6 +27,27 @@ The server builds the UI for each request, rather than picking from screens some
 - **AI agents.** An agent can answer with a native UI instead of a wall of text: a comparison table, a booking form, a chart with buttons to drill in. This is safer than letting a model write code. A confused or manipulated model can produce a bad answer, but it can't make the app do anything it wasn't built to do.
 - **One app for many customers.** A platform ships one app, and each customer's screens are generated from their own configuration, branding and data. A new customer doesn't need a new build, and one customer's setup can't reach into the app beyond what the platform exposed.
 
+## How it compares
+
+The idea isn't new. Plenty of tools render UI on a server and update it in place, on the web and in cross-platform frameworks. What they share is that each one comes with its own stack: you get the format, the transport and the state model by adopting that tool's server, client library or language. None of them is written down as a spec that two unrelated stacks could each implement and expect to work together.
+
+On the web:
+
+- **Phoenix LiveView** keeps state on the server over a WebSocket and sends diffs. Its wire format belongs to Phoenix, and so does LiveView Native, which brings the same model to SwiftUI and Jetpack Compose.
+- **Livewire** sends component state with each request and gets HTML back. It is a Laravel package for Blade, and its payload is an implementation detail.
+- **HTMX** and **Hotwire** swap in HTML fragments from any server. They are close in spirit and stack-neutral on the server, but the fragment is HTML and the client is a browser. Hotwire Native wraps those web pages in a native shell rather than drawing native elements.
+- **ASP.NET Web Forms ViewState** round-tripped serialized page state on every post. It is the old lesson in what happens when that state gets big or is trusted too much.
+
+In cross-platform frameworks:
+
+- **React Server Components in Expo** render a tree of native components on the server and stream it to the app, with server functions for calls. It needs React on both sides, and the stream uses React's own internal format.
+- **Remote Flutter Widgets (`rfw`)** is the Flutter team's package for widget descriptions sent from a server. It defines the format and leaves fetching, state, security and updates to you. Community packages such as Stac and `json_dynamic_widget` do the same for JSON.
+- **DivKit**, from Yandex, has a published JSON layout format with renderers for iOS, Android, the web and Flutter. It is the nearest thing to a shared format, but it has no transport, state or security model.
+- **NativeScript** can build a view from XML at runtime, and that is as far as it goes.
+- Large apps such as Airbnb have built their own server-driven UI systems, which stay in-house.
+
+Asgard tries to cover the whole conversation in one document that doesn't assume a language, framework or rendering engine: the [handshake](protocol.md#6-sessions), [signed and encrypted requests](protocol.md#7-security), state going up and [deltas](protocol.md#105-method-calls) coming back, [regions with placeholders](protocol.md#3-regions), the [push stream](protocol.md#81-the-push-stream), [uploads](protocol.md#106-uploads) and [server-owned screens](protocol.md#12-server-screens). A server in any language can talk to any client that follows it.
+
 ## Status
 
 Draft 3. It is not stable and may change incompatibly before 1.0. We would like to hear from anyone implementing it, so please open an issue.
