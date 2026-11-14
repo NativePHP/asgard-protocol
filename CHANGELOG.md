@@ -16,8 +16,9 @@
   schema. No wire change.
 - Requests no longer carry `platform`. A client that wants the server to
   know its platform, or anything else about itself, sends it in the state
-  (§3.1). Servers ignore a `platform` member from older clients, as they do
-  any unknown member (§5.3). Shared push renders are no longer keyed by
+  (§3.1). A `platform` member from an older client is now an unknown member
+  (§5.3): ignored in region and stream requests, refused in method calls and
+  uploads. Shared push renders are no longer keyed by
   platform (§8.1).
 
 ## Draft 2 (2026-11-14)
