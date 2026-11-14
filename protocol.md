@@ -1347,9 +1347,9 @@ same fragment never share callback ids.
 
 ### 10.5 `#[Server]` method calls
 
-A `#[Server]` method (ASGARD-SERVER-METHODS.md) is a method call rather than
+A `#[Server]` method is a method call rather than
 a tap in a fragment. The component that declares one must use `UsesServer`
-(ASGARD-SERVER-METHODS.md §1.2). It goes to its own endpoint, `{prefix}/call`, in the same
+in the reference client. It goes to its own endpoint, `{prefix}/call`, in the same
 two forms as render (§8), signed and encrypted like everything else and with a
 nonce (§7.3):
 
@@ -1388,7 +1388,7 @@ instance under the rules of §10.2, then handle the hints, then run the
 closure. A call answer MUST NOT be compressed, fragments or not, since the
 delta can mix the server's values with text the device chose (§7.4). A `#[Locked]` prop the method changed is in it:
 locking stops the client writing a prop, not the server. The client MUST apply
-each prop under compare-and-set (ASGARD-SERVER-METHODS.md §5.2).
+each prop under compare-and-set: only if it still holds the value it was sent with.
 
 A server MUST run `method` only under the rules of §10.2, with `#[Server]` in
 place of `#[Action]`. The two are separate allowlists, so an `#[Action]` is
