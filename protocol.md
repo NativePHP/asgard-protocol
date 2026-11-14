@@ -1063,6 +1063,25 @@ have to be held by the application that renders. Something else could hold
 it later, as long as it can seal events: it would need the session keys, or a
 ticket the application issues for them.
 
+### 8.2 Caching
+
+Caching is up to each implementation. A server may cache what it renders, and
+a client may keep fragments, route lists or anything else it has received,
+for as long as it likes, in memory or on disk. This section adds no
+requirements.
+
+Whatever an implementation caches, the rest of this document still applies.
+A client that paints a stored fragment paints it as if it had just arrived,
+so it is still checked against [§9.3](#93-what-a-fragment-may-not-contain) and refused under [§9.4](#94-fragments-the-client-cannot-render). A server that reuses a
+render across users is rendering a shared region and follows the rules for
+those in [§8.1](#81-the-push-stream).
+
+Two things are worth knowing before designing a cache. Every answer is
+encrypted for one session ([§7.4](#74-encryption)), so a shared HTTP cache in front of the
+server cannot usefully keep one, and QUERY requests are not cached at the edge
+in practice ([rationale.md](rationale.md#why-fragments-are-not-cached-at-the-edge)). And a fragment can show the user's own data,
+so a client that keeps fragments on disk is storing that data too.
+
 ## 9. Fragment format
 
 A server returns a **logical tree**: element type names, props, and children.
@@ -1918,12 +1937,9 @@ there is no way to leave the app.
 
 1. Whether a region can be rendered without a bearer token at all, for public
    screens shown before sign-in.
-2. Fragment caching, **in the server only**. Nothing in front of the server
-   will help: shared caches do not cache QUERY, and at least one CDN turns a
-   request that is not GET or POST into a GET on cache lookup and drops the
-   body, with no way to turn that off. A cache inside the server can mix the
-   request body into its key, so that works. Do not design around
-   edge-cached fragments.
+2. ~~Fragment caching.~~ Settled: caching is up to each implementation
+   ([§8.2](#82-caching)). Edge caches will not help, for the reasons in
+   [rationale.md](rationale.md#why-fragments-are-not-cached-at-the-edge).
 3. ~~Navigation from inside a fragment.~~ Settled: a press slot can hold a
    navigation ([§12.4](#124-navigation)). Any route the app knows is a target, its own or a
    server screen's, and the client checks the route exists when the tap

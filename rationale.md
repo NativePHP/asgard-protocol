@@ -62,8 +62,8 @@ coding it does not know.
 
 ## Why fragments are not cached at the edge
 
-Open question 2 in [§13](protocol.md#13-open-questions) says to cache fragments
-only inside the server. No CDN or reverse proxy caches QUERY. Fastly turns a
+Caching is up to each implementation ([§8.2](protocol.md#82-caching)), but a cache in
+front of the server will not help. No CDN or reverse proxy caches QUERY. Fastly turns a
 request that is not GET or POST into a GET on cache lookup and drops the body,
 and documents that as not overridable. A cache inside the server can mix the
 request body into its key, so that works. Edge-cached fragments do not.

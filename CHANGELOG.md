@@ -9,6 +9,8 @@
   deliver new executable code, such as a client action or method call that
   downloads code and runs it.
 - The note comparing Asgard with a remote screen from a dev bridge is gone.
+- New §8.2 on caching: it is up to each implementation, and adds no
+  requirements. Open question 2 is settled by it.
 
 ## Draft 3 (2026-11-14)
 
