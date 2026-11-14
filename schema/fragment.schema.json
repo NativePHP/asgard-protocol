@@ -1,0 +1,210 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "fragment.schema.json",
+  "title": "Asgard fragment (tree/json)",
+  "description": "A fragment a server returns for a region: one node, or a list of nodes. See protocol.md §9 and §10.",
+  "$comment": "Rules from §9 and §10 that this schema cannot check: (1) §9.3 says the root stack/tabs elements are rejected, but the doc does not name their types, and `stack` is also an ordinary layout element, so they are not listed here. (2) Whether an element type exists in this build is the client's question (§9.4). (3) §9.3 says `_`, `native-` and `native:` prop keys are stripped by the client; this schema rejects them, since a well-behaved server never sends them. (4) `navigate` must match a route the device knows when tapped (§12.4). (5) `navigate` is limited to 2048 bytes; maxLength counts characters, so a path with multi-byte characters can pass here and still be too long. (6) `http:` media URLs are allowed only when the client has app.debug on (§9.6); this schema allows https only.",
+  "oneOf": [
+    { "$ref": "#/$defs/node" },
+    {
+      "type": "array",
+      "description": "Several root nodes, as when a Blade view has more than one root tag (§9.5).",
+      "items": { "$ref": "#/$defs/node" }
+    }
+  ],
+  "$defs": {
+    "node": {
+      "type": "object",
+      "description": "One element in the tree (§9.1). It carries no node ids or callback ids; the client makes those (§9.2).",
+      "required": ["type"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The element type name, such as column or text. The client decides whether it can render it (§9.4).",
+          "not": {
+            "enum": ["top_bar", "bottom_nav", "bottom_bar", "fab", "server_region"],
+            "$comment": "§9.3: no screen chrome and no nested regions."
+          }
+        },
+        "key": {
+          "type": ["string", "integer"],
+          "description": "Stable identity among siblings. Relative to the parent, never an id (§9.2)."
+        },
+        "props": { "$ref": "#/$defs/props" },
+        "class": {
+          "type": "string",
+          "description": "Tailwind classes, resolved on the device."
+        },
+        "on_press": { "$ref": "#/$defs/pressSlot" },
+        "on_long_press": { "$ref": "#/$defs/pressSlot" },
+        "on_double_tap": { "$ref": "#/$defs/pressSlot" },
+        "on_change": { "$ref": "#/$defs/valueSlot" },
+        "on_submit": { "$ref": "#/$defs/valueSlot" },
+        "children": {
+          "type": "array",
+          "description": "Child nodes, in order.",
+          "items": { "$ref": "#/$defs/node" }
+        }
+      },
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "description": "§9.3: a webview in a fragment cannot use php mode.",
+          "if": {
+            "properties": { "type": { "const": "webview" } },
+            "required": ["type"]
+          },
+          "then": {
+            "properties": {
+              "props": {
+                "type": "object",
+                "properties": {
+                  "php": {
+                    "description": "Must be off. A php-mode web view loads the app's own routes.",
+                    "enum": [false, null]
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "props": {
+      "type": "object",
+      "description": "Free-form presentational props, written by the server.",
+      "propertyNames": {
+        "description": "§9.3: no compiler-internal keys such as _press, _navigate or native-key.",
+        "not": { "pattern": "^(_|native-|native:)" }
+      },
+      "properties": {
+        "src": { "$ref": "#/$defs/mediaUrl" },
+        "leadingAvatar": { "$ref": "#/$defs/mediaUrl" },
+        "leadingImage": { "$ref": "#/$defs/mediaUrl" }
+      }
+    },
+    "mediaUrl": {
+      "type": "string",
+      "description": "A URL the device loads: an absolute https URL with a host, or an empty string for no image (§9.6).",
+      "pattern": "^(https://[^/?#\\s][^\\s]*)?$"
+    },
+    "pressSlot": {
+      "description": "A press slot: a method call, a navigation or a back (§10.1, §12.4).",
+      "oneOf": [
+        { "$ref": "#/$defs/call" },
+        { "$ref": "#/$defs/navigate" },
+        { "$ref": "#/$defs/back" }
+      ]
+    },
+    "valueSlot": {
+      "description": "A change or submit slot. It can only call a method; the control's value is appended to args (§10.1). It cannot navigate (§12.4).",
+      "$ref": "#/$defs/call"
+    },
+    "call": {
+      "type": "object",
+      "description": "Runs a method. On the server by default, or on the device with target client (§10.2, §10.3).",
+      "required": ["call"],
+      "properties": {
+        "call": {
+          "type": "string",
+          "description": "The method name.",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,99}$"
+        },
+        "args": {
+          "type": "array",
+          "description": "Arguments, passed in order. A server always sends this, even when empty; a client treats a missing one as empty.",
+          "maxItems": 16,
+          "items": { "$ref": "#/$defs/argValue4" }
+        },
+        "target": {
+          "description": "Where the method runs. Absent means server.",
+          "enum": ["server", "client"]
+        }
+      },
+      "additionalProperties": false
+    },
+    "navigate": {
+      "type": "object",
+      "description": "Moves the app to an app path (§12.4).",
+      "required": ["navigate"],
+      "properties": {
+        "navigate": {
+          "type": "string",
+          "description": "An app path: one leading slash, no scheme or host, no backslash, no whitespace or control characters.",
+          "maxLength": 2048,
+          "pattern": "^/(?!/)[^\\\\\\s\\u0000-\\u001f\\u007f-\\u009f]*$"
+        },
+        "replace": {
+          "type": "boolean",
+          "description": "Replace the current screen instead of pushing a new one."
+        },
+        "transition": { "$ref": "#/$defs/transition" }
+      },
+      "additionalProperties": false
+    },
+    "back": {
+      "type": "object",
+      "description": "Goes back one screen (§12.4).",
+      "required": ["back"],
+      "properties": {
+        "back": {
+          "const": true,
+          "description": "Always true."
+        },
+        "transition": { "$ref": "#/$defs/transition" }
+      },
+      "additionalProperties": false
+    },
+    "transition": {
+      "description": "One of the client's screen transitions.",
+      "enum": [
+        "slide_from_right",
+        "slide_from_left",
+        "slide_from_bottom",
+        "fade",
+        "fade_from_bottom",
+        "scale_from_center",
+        "parallax_push",
+        "morph",
+        "none"
+      ]
+    },
+    "argValue4": {
+      "description": "An argument: a plain JSON value, nested at most 4 deep.",
+      "anyOf": [
+        { "$ref": "#/$defs/argScalar" },
+        { "type": "array", "items": { "$ref": "#/$defs/argValue3" } },
+        { "type": "object", "additionalProperties": { "$ref": "#/$defs/argValue3" } }
+      ]
+    },
+    "argValue3": {
+      "description": "A plain JSON value, nested at most 3 more deep.",
+      "anyOf": [
+        { "$ref": "#/$defs/argScalar" },
+        { "type": "array", "items": { "$ref": "#/$defs/argValue2" } },
+        { "type": "object", "additionalProperties": { "$ref": "#/$defs/argValue2" } }
+      ]
+    },
+    "argValue2": {
+      "description": "A plain JSON value, nested at most 2 more deep.",
+      "anyOf": [
+        { "$ref": "#/$defs/argScalar" },
+        { "type": "array", "items": { "$ref": "#/$defs/argValue1" } },
+        { "type": "object", "additionalProperties": { "$ref": "#/$defs/argValue1" } }
+      ]
+    },
+    "argValue1": {
+      "description": "A plain JSON value, nested at most 1 more deep.",
+      "anyOf": [
+        { "$ref": "#/$defs/argScalar" },
+        { "type": "array", "items": { "$ref": "#/$defs/argScalar" } },
+        { "type": "object", "additionalProperties": { "$ref": "#/$defs/argScalar" } }
+      ]
+    },
+    "argScalar": {
+      "description": "null, a boolean, a number or a string.",
+      "type": ["null", "boolean", "number", "string"]
+    }
+  }
+}
