@@ -4,6 +4,13 @@
 
 - Address segments may contain hyphens (§4), so `reports.sales-chart` is a
   valid address. A segment still starts with a letter.
+- New section, "Building on HTTP", naming the HTTP standards Asgard relies on:
+  RFC 9110 for semantics, the POST and QUERY methods, every status code it
+  uses, and TLS. Deployments should follow BCP 195 for TLS.
+- 419 is noted as an unregistered status code, with open question 12 on
+  whether to replace it before 1.0.
+- The References list is tidied, and adds RFC 3986, 8259, 8446, 9112, 9113,
+  9114 and 9325.
 
 ## Draft 2 (2026-11-14)
 

@@ -28,6 +28,63 @@ Sections and paragraphs marked as examples or implementer notes are
 non-normative. Examples show messages as they appear on the wire: JSON
 bodies, after decryption where they are encrypted, and HTTP headers.
 
+## Building on HTTP
+
+Asgard is a thin layer on top of HTTP. Methods, status codes, header fields,
+content codings and encryption in transit all come from HTTP and the
+standards around it, which were written long before Asgard. This section
+names what Asgard relies on, so an implementer knows where each piece is
+defined and so that work is credited.
+
+**Semantics.** The meaning of every method, status code and header field in
+this document is the one [RFC 9110](https://www.rfc-editor.org/rfc/rfc9110) gives. Asgard works over any HTTP version,
+[RFC 9112](https://www.rfc-editor.org/rfc/rfc9112) (HTTP/1.1), [RFC 9113](https://www.rfc-editor.org/rfc/rfc9113) (HTTP/2) or [RFC 9114](https://www.rfc-editor.org/rfc/rfc9114) (HTTP/3), and nothing in it
+depends on which.
+
+**Methods.** Two, both with a body:
+
+- POST ([RFC 9110 §9.3.3](https://www.rfc-editor.org/rfc/rfc9110#section-9.3.3)), for the handshake and as the fallback form of
+  every other request ([§8](#8-transport)).
+- QUERY ([RFC 10008](https://www.rfc-editor.org/rfc/rfc10008)), a safe method that carries a body, for every request
+  that changes nothing on the server ([§8](#8-transport)).
+
+**Status codes.** All but one are defined in [RFC 9110](https://www.rfc-editor.org/rfc/rfc9110):
+
+| Code | Name | Defined in | Used for |
+|---|---|---|---|
+| 200 | OK | [RFC 9110 §15.3.1](https://www.rfc-editor.org/rfc/rfc9110#section-15.3.1) | A successful answer |
+| 204 | No Content | [RFC 9110 §15.3.5](https://www.rfc-editor.org/rfc/rfc9110#section-15.3.5) | Ending a push stream ([§8.1](#81-the-push-stream)) |
+| 401 | Unauthorized | [RFC 9110 §15.5.2](https://www.rfc-editor.org/rfc/rfc9110#section-15.5.2) | The app's bearer token was rejected ([§6.3](#63-loss), [§7.5](#75-authentication-is-separate)) |
+| 403 | Forbidden | [RFC 9110 §15.5.4](https://www.rfc-editor.org/rfc/rfc9110#section-15.5.4) | A failed check or a missing nonce ([§7.3](#73-signatures)) |
+| 404 | Not Found | [RFC 9110 §15.5.5](https://www.rfc-editor.org/rfc/rfc9110#section-15.5.5) | An unknown address, region or method ([§4](#4-addressing-components), [§10.5](#105-method-calls)) |
+| 405 | Method Not Allowed | [RFC 9110 §15.5.6](https://www.rfc-editor.org/rfc/rfc9110#section-15.5.6) | A method the endpoint does not accept ([§8](#8-transport)) |
+| 413 | Content Too Large | [RFC 9110 §15.5.14](https://www.rfc-editor.org/rfc/rfc9110#section-15.5.14) | An upload over its size limit ([§10.6](#106-uploads)) |
+| 415 | Unsupported Media Type | [RFC 9110 §15.5.16](https://www.rfc-editor.org/rfc/rfc9110#section-15.5.16) | An upload of a type the method does not accept ([§10.6](#106-uploads)) |
+| 419 | (not registered) | This document | The session is missing, unknown or expired ([§6.3](#63-loss)) |
+| 422 | Unprocessable Content | [RFC 9110 §15.5.21](https://www.rfc-editor.org/rfc/rfc9110#section-15.5.21) | A body that is well formed but wrong |
+| 500 | Internal Server Error | [RFC 9110 §15.6.1](https://www.rfc-editor.org/rfc/rfc9110#section-15.6.1) | A fragment or delta the server could not produce |
+| 501 | Not Implemented | [RFC 9110 §15.6.2](https://www.rfc-editor.org/rfc/rfc9110#section-15.6.2) | Sent by something in front of the server that refuses QUERY ([§8](#8-transport)) |
+
+419 is not a registered HTTP status code. Asgard borrows it from common web
+framework practice for "the session expired", because 401 already means the
+app's own credentials failed and the two need different handling. Whether to
+move to a registered code before 1.0 is an open question
+([§13](#13-open-questions)).
+
+**Fields and content.** `Content-Type` and `Content-Encoding`
+([RFC 9110 §8.3](https://www.rfc-editor.org/rfc/rfc9110#section-8.3), [RFC 9110 §8.4](https://www.rfc-editor.org/rfc/rfc9110#section-8.4)) carry JSON ([RFC 8259](https://www.rfc-editor.org/rfc/rfc8259)), encrypted with
+`aes128gcm` ([RFC 8188](https://www.rfc-editor.org/rfc/rfc8188)) and optionally compressed with gzip ([RFC 1952](https://www.rfc-editor.org/rfc/rfc1952)).
+`Content-Digest` ([RFC 9530](https://www.rfc-editor.org/rfc/rfc9530)) and HTTP Message Signatures ([RFC 9421](https://www.rfc-editor.org/rfc/rfc9421)) sign
+messages ([§7.3](#73-signatures)). URIs follow [RFC 3986](https://www.rfc-editor.org/rfc/rfc3986). The push stream is
+Server-Sent Events ([SSE](https://html.spec.whatwg.org/multipage/server-sent-events.html)).
+
+**TLS.** Every Asgard request goes to an `https:` URI ([RFC 9110 §4.2.2](https://www.rfc-editor.org/rfc/rfc9110#section-4.2.2)), so
+over TLS ([RFC 8446](https://www.rfc-editor.org/rfc/rfc8446) for TLS 1.3). Asgard relies on TLS to authenticate the
+server and to stop an attacker who rewrites traffic ([§7.1](#71-threat-model)). Its own
+signing and encryption ([§7](#7-security)) add protection against something
+that terminates TLS and reads what passes. Deployments SHOULD follow the TLS
+recommendations in BCP 195 ([RFC 9325](https://www.rfc-editor.org/rfc/rfc9325)).
+
 ## 1. Who owns what
 
 The client owns the shell and its own screens. The server may own screens
@@ -1876,43 +1933,37 @@ there is no way to leave the app.
 11. Prop names are camelCase (`fontSize`, `a11yLabel`, `leadingAvatar`),
     while every other name on the wire is snake_case (`on_press`,
     `nav_bar`, `scroll_view`). One convention should be chosen before 1.0.
+12. 419 is not a registered status code ([Building on HTTP](#building-on-http)).
+    Whether to replace it before 1.0, for example with 401 and a
+    `WWW-Authenticate` challenge ([RFC 9110 §11.6.1](https://www.rfc-editor.org/rfc/rfc9110#section-11.6.1)) that tells a lost session
+    apart from a rejected bearer token, is open.
 
 ## References
 
 ### Normative references
 
-- [FIPS 186-5](https://doi.org/10.6028/NIST.FIPS.186-5) "Digital Signature Standard (DSS)", FIPS PUB 186-5, NIST,
-  February 2023. It defines the P-256 curve.
-  <https://doi.org/10.6028/NIST.FIPS.186-5>
-- [RFC 1952](https://www.rfc-editor.org/rfc/rfc1952) "GZIP file format specification version 4.3", [RFC 1952](https://www.rfc-editor.org/rfc/rfc1952).
-  <https://www.rfc-editor.org/rfc/rfc1952>
-- [RFC 2119](https://www.rfc-editor.org/rfc/rfc2119) "Key words for use in RFCs to Indicate Requirement Levels",
-  BCP 14, [RFC 2119](https://www.rfc-editor.org/rfc/rfc2119). <https://www.rfc-editor.org/rfc/rfc2119>
-- [RFC 4648](https://www.rfc-editor.org/rfc/rfc4648) "The Base16, Base32, and Base64 Data Encodings", [RFC 4648](https://www.rfc-editor.org/rfc/rfc4648).
-  <https://www.rfc-editor.org/rfc/rfc4648>
-- [RFC 5869](https://www.rfc-editor.org/rfc/rfc5869) "HMAC-based Extract-and-Expand Key Derivation Function (HKDF)",
-  [RFC 5869](https://www.rfc-editor.org/rfc/rfc5869). <https://www.rfc-editor.org/rfc/rfc5869>
-- [RFC 8174](https://www.rfc-editor.org/rfc/rfc8174) "Ambiguity of Uppercase vs Lowercase in [RFC 2119](https://www.rfc-editor.org/rfc/rfc2119) Key Words",
-  BCP 14, [RFC 8174](https://www.rfc-editor.org/rfc/rfc8174). <https://www.rfc-editor.org/rfc/rfc8174>
-- [RFC 8188](https://www.rfc-editor.org/rfc/rfc8188) "Encrypted Content-Encoding for HTTP", [RFC 8188](https://www.rfc-editor.org/rfc/rfc8188).
-  <https://www.rfc-editor.org/rfc/rfc8188>
-- [RFC 9110](https://www.rfc-editor.org/rfc/rfc9110) "HTTP Semantics", STD 97, [RFC 9110](https://www.rfc-editor.org/rfc/rfc9110).
-  <https://www.rfc-editor.org/rfc/rfc9110>
-- [RFC 9421](https://www.rfc-editor.org/rfc/rfc9421) "HTTP Message Signatures", [RFC 9421](https://www.rfc-editor.org/rfc/rfc9421).
-  <https://www.rfc-editor.org/rfc/rfc9421>
-- [RFC 9530](https://www.rfc-editor.org/rfc/rfc9530) "Digest Fields", [RFC 9530](https://www.rfc-editor.org/rfc/rfc9530).
-  <https://www.rfc-editor.org/rfc/rfc9530>
-- [RFC 10008](https://www.rfc-editor.org/rfc/rfc10008) "The HTTP QUERY Method", [RFC 10008](https://www.rfc-editor.org/rfc/rfc10008).
-  <https://www.rfc-editor.org/rfc/rfc10008>
-- [SEC 1](https://www.secg.org/sec1-v2.pdf) "Elliptic Curve Cryptography", version 2.0, Standards for
-  Efficient Cryptography Group, May 2009. Its section 2.3.3 defines the
-  point encoding used in [§6.1](#61-handshake). <https://www.secg.org/sec1-v2.pdf>
-- [SSE](https://html.spec.whatwg.org/multipage/server-sent-events.html) "Server-sent events", HTML Living Standard, WHATWG, section 9.2.
-  <https://html.spec.whatwg.org/multipage/server-sent-events.html>
+- [FIPS 186-5](https://doi.org/10.6028/NIST.FIPS.186-5): Digital Signature Standard (DSS), NIST, February 2023. Defines the P-256 curve.
+- [RFC 1952](https://www.rfc-editor.org/rfc/rfc1952): GZIP file format specification version 4.3
+- [RFC 2119](https://www.rfc-editor.org/rfc/rfc2119): Key words for use in RFCs to Indicate Requirement Levels, BCP 14
+- [RFC 3986](https://www.rfc-editor.org/rfc/rfc3986): Uniform Resource Identifier (URI): Generic Syntax, STD 66
+- [RFC 4648](https://www.rfc-editor.org/rfc/rfc4648): The Base16, Base32, and Base64 Data Encodings
+- [RFC 5869](https://www.rfc-editor.org/rfc/rfc5869): HMAC-based Extract-and-Expand Key Derivation Function (HKDF)
+- [RFC 8174](https://www.rfc-editor.org/rfc/rfc8174): Ambiguity of Uppercase vs Lowercase in RFC 2119 Key Words, BCP 14
+- [RFC 8188](https://www.rfc-editor.org/rfc/rfc8188): Encrypted Content-Encoding for HTTP
+- [RFC 8259](https://www.rfc-editor.org/rfc/rfc8259): The JavaScript Object Notation (JSON) Data Interchange Format, STD 90
+- [RFC 8446](https://www.rfc-editor.org/rfc/rfc8446): The Transport Layer Security (TLS) Protocol Version 1.3
+- [RFC 9110](https://www.rfc-editor.org/rfc/rfc9110): HTTP Semantics, STD 97
+- [RFC 9421](https://www.rfc-editor.org/rfc/rfc9421): HTTP Message Signatures
+- [RFC 9530](https://www.rfc-editor.org/rfc/rfc9530): Digest Fields
+- [RFC 10008](https://www.rfc-editor.org/rfc/rfc10008): The HTTP QUERY Method
+- [SEC 1](https://www.secg.org/sec1-v2.pdf): Elliptic Curve Cryptography, version 2.0, Standards for Efficient Cryptography Group, May 2009. Section 2.3.3 defines the point encoding used in [§6.1](#61-handshake).
+- [SSE](https://html.spec.whatwg.org/multipage/server-sent-events.html): Server-sent events, HTML Living Standard, WHATWG.
 
 ### Informative references
 
-- [RFC 8291](https://www.rfc-editor.org/rfc/rfc8291) "Message Encryption for Web Push", [RFC 8291](https://www.rfc-editor.org/rfc/rfc8291).
-  <https://www.rfc-editor.org/rfc/rfc8291>
-- [TAILWIND](https://tailwindcss.com/docs) Tailwind CSS utility classes, the vocabulary of `class` in [§9.7](#97-element-types).
-  <https://tailwindcss.com/docs>
+- [RFC 8291](https://www.rfc-editor.org/rfc/rfc8291): Message Encryption for Web Push
+- [RFC 9112](https://www.rfc-editor.org/rfc/rfc9112): HTTP/1.1, STD 99
+- [RFC 9113](https://www.rfc-editor.org/rfc/rfc9113): HTTP/2
+- [RFC 9114](https://www.rfc-editor.org/rfc/rfc9114): HTTP/3
+- [RFC 9325](https://www.rfc-editor.org/rfc/rfc9325): Recommendations for Secure Use of Transport Layer Security (TLS) and Datagram Transport Layer Security (DTLS), BCP 195
+- [TAILWIND](https://tailwindcss.com/docs): Tailwind CSS utility classes, the vocabulary of `class` in [§9.7](#97-element-types).
