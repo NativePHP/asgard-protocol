@@ -20,11 +20,12 @@ Some of the things that makes possible:
 - **Content managed outside the app.** Home screens, promotions, onboarding and seasonal campaigns can come from a CMS. Editors change them on the server and every installed version of the app picks up the change.
 - **Third-party widgets.** A partner's server can render a region in your app, such as a payment summary, a loyalty card or a booking status. The partner sends data your app chooses how to draw. It can't run code, and it can only call methods you [exposed to servers](protocol.md#103-client-actions).
 
-### Generative UI for AI agents
+### Generative UI
 
-An agent can answer with a native UI instead of a wall of text: a comparison table, a booking form, a chart with buttons to drill in. The agent's server returns a fragment, the same JSON any other server would.
+The server builds the UI for each request, rather than picking from screens someone designed in advance. A fragment is only data, which is what makes this safe. The client checks it against the [element types](protocol.md#97-element-types) it can render and [what a fragment may not contain](protocol.md#93-what-a-fragment-may-not-contain), and a tap can only reach a method the app has [exposed to servers](protocol.md#103-client-actions). Whatever generates the fragment, the app never runs anything new.
 
-This is safer than letting a model write code. A fragment is only data. The client checks it against the [element types](protocol.md#97-element-types) it can render and [what a fragment may not contain](protocol.md#93-what-a-fragment-may-not-contain). A tap can only reach a method the app has [exposed to servers](protocol.md#103-client-actions). A confused or manipulated model can produce a bad answer, but it cannot make the app run something new.
+- **AI agents.** An agent can answer with a native UI instead of a wall of text: a comparison table, a booking form, a chart with buttons to drill in. This is safer than letting a model write code. A confused or manipulated model can produce a bad answer, but it can't make the app do anything it wasn't built to do.
+- **One app for many customers.** A platform ships one app, and each customer's screens are generated from their own configuration, branding and data. A new customer doesn't need a new build, and one customer's setup can't reach into the app beyond what the platform exposed.
 
 ## Status
 
