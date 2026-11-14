@@ -8,7 +8,7 @@ The app stays in charge. It ships its own screens, works offline, and only asks 
 
 ## Status
 
-Draft 1. It is not stable and may change incompatibly before 1.0. We would like to hear from anyone implementing it, so please open an issue.
+Draft 2. It is not stable and may change incompatibly before 1.0. We would like to hear from anyone implementing it, so please open an issue.
 
 ## Implementations
 

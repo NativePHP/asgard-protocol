@@ -1,6 +1,6 @@
 # Changelog
 
-## Draft 2 (unreleased)
+## Draft 2 (2026-11-14)
 
 - The transport probe uses only a safe request (a region request with no
   action, or the route list), and other requests go as POST plus the header
