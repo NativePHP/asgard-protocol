@@ -23,6 +23,7 @@ The reference implementations are built by [NativePHP](https://nativephp.com):
 
 - [protocol.md](protocol.md), the specification
 - [schema/fragment.schema.json](schema/fragment.schema.json), a JSON Schema for the fragment format in §9
+- [rationale.md](rationale.md), non-normative background, including the vendor evidence for the QUERY fallback
 - [CHANGELOG.md](CHANGELOG.md)
 
 ## License

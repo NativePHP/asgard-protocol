@@ -2,39 +2,35 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "fragment.schema.json",
   "title": "Asgard fragment (tree/json)",
-  "description": "A fragment a server returns for a region: one node, or a list of nodes. See protocol.md §9 and §10.",
-  "$comment": "Rules from §9 and §10 that this schema cannot check: (1) §9.3 says the root stack/tabs elements are rejected, but the doc does not name their types, and `stack` is also an ordinary layout element, so they are not listed here. (2) Whether an element type exists in this build is the client's question (§9.4). (3) §9.3 says `_`, `native-` and `native:` prop keys are stripped by the client; this schema rejects them, since a well-behaved server never sends them. (4) `navigate` must match a route the device knows when tapped (§12.4). (5) `navigate` is limited to 2048 bytes; maxLength counts characters, so a path with multi-byte characters can pass here and still be too long. (6) `http:` media URLs are allowed only when the client has app.debug on (§9.6); this schema allows https only.",
+  "description": "A fragment a server returns for a region: one node, or an array of nodes. See protocol.md §9 and §10.",
+  "$comment": "Rules from §9, §10 and §12.4 that this schema cannot check: (1) A fragment may use only the core types of §9.7 plus the types the client listed in `elements` at the handshake (§6.1, §9.3). That depends on the session, so this schema does not list types at all; it only checks a type's shape. (2) A client refuses a fragment nested deeper than 64 levels (§9.1). JSON Schema has no way to count depth, so that is not checked here. (3) Unknown members of a node, and unknown props, are ignored (§5.3), so this schema allows them. Callback slots and navigations refuse unknown members, and so does this schema. (4) Props of a known type with the wrong value type are treated as absent by the client (§9.7); this schema only checks media URLs. (5) `navigate` must match a route the device knows when tapped (§12.4). (6) `navigate` and media URLs are limited to 2048 bytes; maxLength counts characters, so a value with multi-byte characters can pass here and still be too long. (7) A client may accept `http:` media URLs in a development build (§9.6); this schema allows https only. (8) Keys must be unique among siblings, compared as strings (§9.1).",
   "oneOf": [
     { "$ref": "#/$defs/node" },
     {
       "type": "array",
-      "description": "Several root nodes, as when a Blade view has more than one root tag (§9.5).",
+      "description": "Several root nodes, side by side in the region (§9.1).",
       "items": { "$ref": "#/$defs/node" }
     }
   ],
   "$defs": {
     "node": {
       "type": "object",
-      "description": "One element in the tree (§9.1). It carries no node ids or callback ids; the client makes those (§9.2).",
+      "description": "One element in the tree (§9.1). It carries no node ids or callback ids; the client makes those (§9.2). Members this schema does not name are ignored (§5.3).",
       "required": ["type"],
       "properties": {
         "type": {
           "type": "string",
-          "minLength": 1,
-          "description": "The element type name, such as column or text. The client decides whether it can render it (§9.4).",
-          "not": {
-            "enum": ["top_bar", "bottom_nav", "bottom_bar", "fab", "server_region"],
-            "$comment": "§9.3: no screen chrome and no nested regions."
-          }
+          "description": "The element type name: a core type (§9.7) or one the client advertised. The client decides whether it can render it (§9.4).",
+          "pattern": "^[a-z][a-z0-9_]*$"
         },
         "key": {
           "type": ["string", "integer"],
-          "description": "Stable identity among siblings. Relative to the parent, never an id (§9.2)."
+          "description": "Stable identity among siblings, compared as a string. Relative to the parent, never an id (§9.2)."
         },
         "props": { "$ref": "#/$defs/props" },
         "class": {
           "type": "string",
-          "description": "Tailwind classes, resolved on the device."
+          "description": "Space-separated style utility names, resolved on the device (§9.7)."
         },
         "on_press": { "$ref": "#/$defs/pressSlot" },
         "on_long_press": { "$ref": "#/$defs/pressSlot" },
@@ -47,10 +43,25 @@
           "items": { "$ref": "#/$defs/node" }
         }
       },
-      "additionalProperties": false,
       "allOf": [
         {
-          "description": "§9.3: a webview in a fragment cannot use php mode.",
+          "description": "§9.7: a text node's children are text runs.",
+          "if": {
+            "properties": { "type": { "const": "text" } },
+            "required": ["type"]
+          },
+          "then": {
+            "properties": {
+              "children": {
+                "items": {
+                  "properties": { "type": { "const": "text" } }
+                }
+              }
+            }
+          }
+        },
+        {
+          "description": "§9.3: a web view in a fragment must not load the client's own local content.",
           "if": {
             "properties": { "type": { "const": "webview" } },
             "required": ["type"]
@@ -60,8 +71,8 @@
               "props": {
                 "type": "object",
                 "properties": {
-                  "php": {
-                    "description": "Must be off. A php-mode web view loads the app's own routes.",
+                  "local": {
+                    "description": "Must be off. A local web view loads the client's own content.",
                     "enum": [false, null]
                   }
                 }
@@ -73,21 +84,27 @@
     },
     "props": {
       "type": "object",
-      "description": "Free-form presentational props, written by the server.",
+      "description": "Presentational props, written by the server (§9.3, §9.7). Props a type does not define are ignored.",
       "propertyNames": {
-        "description": "§9.3: no compiler-internal keys such as _press, _navigate or native-key.",
+        "description": "§9.3: names beginning _, native- or native: are reserved.",
         "not": { "pattern": "^(_|native-|native:)" }
       },
       "properties": {
         "src": { "$ref": "#/$defs/mediaUrl" },
-        "leadingAvatar": { "$ref": "#/$defs/mediaUrl" },
-        "leadingImage": { "$ref": "#/$defs/mediaUrl" }
+        "leadingAvatar": { "$ref": "#/$defs/mediaUrl", "description": "Used by the well-known list_item type when a client advertises it (§9.7)." },
+        "leadingImage": { "$ref": "#/$defs/mediaUrl", "description": "Used by the well-known list_item type when a client advertises it (§9.7)." }
       }
     },
     "mediaUrl": {
-      "type": "string",
-      "description": "A URL the device loads: an absolute https URL with a host, or an empty string for no image (§9.6).",
-      "pattern": "^(https://[^/?#\\s][^\\s]*)?$"
+      "description": "A URL the device loads: an absolute https URL with a host. null or an empty string mean no image, as does leaving the prop out (§9.6).",
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "string",
+          "maxLength": 2048,
+          "pattern": "^(https://[^/?#\\s][^\\s]*)?$"
+        }
+      ]
     },
     "pressSlot": {
       "description": "A press slot: a method call, a navigation or a back (§10.1, §12.4).",
@@ -103,7 +120,7 @@
     },
     "call": {
       "type": "object",
-      "description": "Runs a method. On the server by default, or on the device with target client (§10.2, §10.3).",
+      "description": "Runs a method. On the server by default, or on the device with target client (§10.2, §10.3). Unknown members are refused (§5.3).",
       "required": ["call"],
       "properties": {
         "call": {
@@ -126,7 +143,7 @@
     },
     "navigate": {
       "type": "object",
-      "description": "Moves the app to an app path (§12.4).",
+      "description": "Moves the app to an app path (§12.4). Unknown members are refused (§5.3).",
       "required": ["navigate"],
       "properties": {
         "navigate": {
@@ -145,7 +162,7 @@
     },
     "back": {
       "type": "object",
-      "description": "Goes back one screen (§12.4).",
+      "description": "Goes back one screen (§12.4). Unknown members are refused (§5.3).",
       "required": ["back"],
       "properties": {
         "back": {

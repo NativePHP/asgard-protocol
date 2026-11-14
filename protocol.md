@@ -1,161 +1,134 @@
 # The Asgard Protocol
 
-**Status:** Draft 1, 2026-11-14.
+**Status:** Draft 2 (unreleased).
 
 This draft is not stable. It may change in incompatible ways before 1.0.
 Please send feedback as issues on this repository.
 
-Asgard lets a server render part of a NativePHP app's native UI. A client app
+Asgard lets a server render part of a native mobile app's UI. A client app
 marks a region of a screen as server-rendered, sends its state to a server, and
 gets back a description of a native element subtree to paint in place. A
 server can also own whole screens inside the app's shell, with their own
-chrome and routes (§12).
+chrome and routes ([§12](#12-server-screens)).
 
-The point of writing this as a protocol rather than a Laravel package is that
-the server half is replaceable. Nothing below requires the server to be PHP.
-`nativephp/asgard` is the reference server implementation; `nativephp/midgard`
-is the reference client. A Rails or Go server that speaks this document is a
-first-class participant.
+This document describes only what crosses the wire and what each side MUST do
+with it. Any client and any server, written in any language, that follow it
+can talk to each other. Reference implementations of both halves exist; the
+README lists them.
 
 ## Conventions
 
 The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT",
 "SHOULD", "SHOULD NOT", "RECOMMENDED", "NOT RECOMMENDED", "MAY", and
 "OPTIONAL" in this document are to be interpreted as described in BCP 14
-[RFC 2119] [RFC 8174] when, and only when, they appear in all capitals, as
+[RFC 2119](https://www.rfc-editor.org/rfc/rfc2119) [RFC 8174](https://www.rfc-editor.org/rfc/rfc8174) when, and only when, they appear in all capitals, as
 shown here.
 
 Sections and paragraphs marked as examples or implementer notes are
-non-normative. Examples written with NativePHP's Blade, PHP attributes or
-class names show the reference implementations (`nativephp/midgard` as the
-client, `nativephp/asgard` as the server). They are not requirements on
-other implementations.
+non-normative. Examples show messages as they appear on the wire: JSON
+bodies, after decryption where they are encrypted, and HTTP headers.
 
 ## 1. Who owns what
 
 The client owns the shell and its own screens. The server may own screens
 inside that shell.
 
-It is not Jump. Jump is a dev bridge: the dev machine owns the whole screen,
-renders every frame, and ships full view state to a device that renders and
-sends events back. State lives on the dev box.
+It is not a remote screen. A dev bridge that mirrors a whole screen from a
+dev machine renders every frame there, ships full view state to the device,
+and keeps state on the dev box.
 
 Asgard inverts that. The **client owns the shell**: the app, its navigation
 stack, its own screens and their state. It ships locally, renders offline,
 and asks a server only for what it has been told to ask about. That is
-either a region inside one of its own screens (§3), or a whole server screen
-at a route the server listed (§12). A server screen lives inside the shell:
+either a region inside one of its own screens ([§3](#3-regions)), or a whole server screen
+at a route the server listed ([§12](#12-server-screens)). A server screen lives inside the shell:
 the client opens it, keeps it on its stack, wraps it in chrome the server
 described, and MUST NOT let it replace a route of the app's own. The server is
 a renderer for fragments and screens, not the owner of the app.
 
 It is also not remote code. The server sends a description of elements. It
-MUST NOT send Blade, PHP, or anything the client compiles or executes. A
-server may still write its fragments in Blade (§9.5), but it compiles them
-itself. What crosses the wire is the same fragment JSON a tree built in code
-would make, and the client cannot tell the two apart.
+MUST NOT send code, templates, or anything else the client compiles or
+executes. How a server produces a fragment is up to it ([§9.5](#95-authoring)). What crosses
+the wire is always the fragment JSON of [§9](#9-fragment-format).
 
 ## 2. Roles
 
 | Term | Meaning |
 |---|---|
-| **Client** | The mobile app. Runs `nativephp/mobile` for rendering and `nativephp/midgard` for transport, session and crypto. |
+| **Client** | The mobile app, including whatever it uses for rendering, transport, sessions and crypto. |
 | **Server** | Any HTTPS server implementing this document. |
 | **Region** | A named, server-rendered part of a client screen. |
-| **Client component** | The half of a split component that ships in the app. Owns state, renders the placeholder. |
-| **Server component** | The half that lives on the server. Renders the fragment. |
+| **Client component** | The part of a client screen that declares a region. It owns the state and renders the placeholder. |
+| **Server component** | What the server resolves an address to ([§4](#4-addressing-components)). It renders the fragments for that address's regions. |
 | **Fragment** | The element subtree a server returns for one region. |
-| **Server screen** | A whole screen the server owns, opened at a route the server listed (§12). Its body is one region. |
-| **Chrome** | A server screen's nav bar, tab bar and other bars, sent next to its fragment (§12.2). |
+| **Server screen** | A whole screen the server owns, opened at a route the server listed ([§12](#12-server-screens)). Its body is one region. |
+| **Chrome** | A server screen's nav bar, tab bar and other bars, sent next to its fragment ([§12.2](#122-chrome)). |
 
 ## 3. Regions
 
-A client view marks a server-rendered region with a Blade directive. This
-is the app's own Blade, compiled on the device like the rest of the screen:
+A client marks a region of one of its own screens as server-rendered and
+gives it a name. The name MUST be unique among the regions of the component
+that declares it.
 
-```blade
-@server('sales-summary')
-    <x-skeleton-card />
-@endserver
-```
-
-The block body is the **placeholder**: what the client paints immediately,
-before and during the request. It is ordinary client-side markup and it MUST
-render offline. When a fragment arrives, the client replaces the placeholder
-subtree with it.
-
-This is the same shape as the existing `#[Lazy]` attribute
-(`src/Attributes/Lazy.php`), which paints a placeholder frame while a slow
-`mount()` runs. `@server` is that idea applied to a subtree instead of a whole
-screen, with the work happening on a server instead of locally.
+What the client shows in the region before a fragment arrives is the
+**placeholder**: a skeleton, a spinner, or anything else the app draws. It is
+the client's own UI and it MUST render offline. When a fragment arrives, the
+client replaces the placeholder subtree with it.
 
 A region that never resolves MUST keep its placeholder. A screen with no network
 is a screen with skeletons where the server regions would be, and everything
 else working. That is the intended degraded state, not an error case.
 
-A component needs nothing extra to render regions. They fetch, paint, stream
-and fail the same way in any component. The helpers a component calls from
-its own code (`refreshServerRegions()`, `receiveFragment()`,
-`callServerMethod()` and the two timeout overrides) come from a trait the
-component opts into:
+The app still hears about it, so it can swap a skeleton for a message. When a
+region request times out or fails, the client MUST surface the failure to the
+app ([§3.1](#31-when-the-client-asks)), and the app can then show something else in the placeholder, such
+as an error message and a retry control.
 
-```php
-use Native\Mobile\Edge\Asgard\Concerns\UsesServer;
-
-class Home extends NativeComponent
-{
-    use UsesServer;
-}
-```
-
-None of them can be named from a template or a fragment. The interaction guard
-refuses every UsesServer method, as it refuses NativeComponent's own.
-
-The app still hears about it, so it can swap a skeleton for a message. A
-region request that times out or fails fires `ServerRegionFailed` on the
-screen (§3.1), and the view can paint something else in the placeholder:
-
-```blade
-@server('stats')
-    @if ($statsFailed)
-        <native:text>Couldn't load stats.</native:text>
-        <native:button @tap="retryStats">Retry</native:button>
-    @else
-        <x-skeleton-card />
-    @endif
-@endserver
-```
+How the app asks for a refresh, and how it hears about failures, is up to the
+client. A fragment MUST NOT be able to trigger either: a client action
+([§10.3](#103-client-actions)) can only reach methods the app exposed to servers.
 
 ### 3.1 When the client asks
 
-After a frame in which a region painted its placeholder, the component that
-rendered it asks the bound `FragmentSource` for a fragment, once per
-component instance. Regions belong to the component whose view declares
-them, so a region in a child component is requested and delivered as that
-child. `refreshServerRegions()` (from `UsesServer`) asks again after the next
-frame, with the fragment on screen kept until the new one lands. Fragments
-are held per component instance, so two screens with a region of the same
-name never share one.
+After a component first shows a region's placeholder, the client asks the
+server for a fragment, once per component instance. Regions belong to the
+component that declares them, so a region in a nested component is
+requested and delivered for that component. The app can ask for a region
+again (a **refresh**). The fragment on screen stays until the new one lands.
+Fragments are held per component instance, so two screens with a region of
+the same name never share one.
 
-The source is fire and forget. It answers later with
-`ServerRegion::deliver($request, $tree)`, which also works from an AsyncTask
-`->finished()` callback. A component that uses `UsesServer` can do the same
-with `$this->receiveFragment($request, $tree)`, but a source cannot know the
-screen it runs on has that, so it should call `ServerRegion::deliver()`. An answer to a request that a newer one superseded, or for a
-component that has gone, MUST be dropped. The default `NullFragmentSource` asks
-nobody.
+A region request goes to `{base}/render` ([§8](#8-transport)). Its body names the component's
+address ([§4](#4-addressing-components)), the region, the component's state ([§5.1](#51-client-state)) and the client's
+platform:
+
+```json
+{"protocol":1,"component":"app.native.screens.home","region":"stats",
+ "state":{"period":"week"},"platform":"ios"}
+```
+
+`platform` is `ios` or `android` in this version. The answer carries the
+region's fragment ([§9](#9-fragment-format)) and its version token ([§8.1](#81-the-push-stream)):
+
+```json
+{"protocol":1,"region":"stats","version":"q3V0bG9yZW1pcHN1",
+ "fragment":{"type":"text","props":{"text":"42 sales"}}}
+```
+
+An answer to a request that a newer one superseded, or for a component that
+has gone, MUST be dropped.
 
 #### Several regions in one request
 
-When one component instance wants several regions after the same frame, it
-MUST send one request for all of them rather than one each. That happens on the
-first frame of a screen with several regions, on `refreshServerRegions()`
-with no name, and when several hints or signals for one instance land
+When one component instance wants several regions at the same moment, it
+SHOULD send one request for all of them rather than one each. That happens on
+the first frame of a screen with several regions, on a refresh of all of a
+component's regions, and when several hints or signals for one instance land
 before it is drawn. The body names `regions` instead of `region`:
 
 ```json
 {"protocol":1,"component":"app.native.screens.home","regions":["stats","feed"],
- "state":{…},"platform":"ios"}
+ "state":{"period":"week"},"platform":"ios"}
 ```
 
 `regions` MUST hold 1 to 16 distinct names, and a body MUST have `region` or
@@ -166,119 +139,92 @@ per region, each shaped like a single answer's:
 
 ```json
 {"protocol":1,"fragments":{
- "stats":{"version":"q3V0bG9yZW1pcHN1","fragment":{…}},
- "feed":{"version":"bG9yZW1pcHN1cTNW","fragment":{…}}}}
+ "stats":{"version":"q3V0bG9yZW1pcHN1","fragment":{"type":"spacer"}},
+ "feed":{"version":"bG9yZW1pcHN1cTNW","fragment":{"type":"divider"}}}}
 ```
 
 A server screen's part carries `chrome` too. The counters for every
 region's token MUST be read once, before any of them renders.
 
 On the device each region in a batch is still its own request, with its own
-id, its own timer and its own supersede rule. The source hands the answer to
-`ServerRegion::deliverBatch()`, which delivers each part as if it had been
-asked for alone. A region the answer left out MUST fail with reason `invalid`. A
-batch that fails as a whole goes to `ServerRegion::failedBatch()`, and every
-region in it fails and fires its own `ServerRegionFailed`. More than 16
-regions MUST go out as several batches.
+timer and its own supersede rule. The client delivers each part as if it had
+been asked for alone. A region the answer left out MUST fail with reason
+`invalid`. When a batch fails as a whole, every region in it fails and each
+failure is surfaced on its own. More than 16 regions MUST go out as several
+batches.
 
-The server MUST NOT compress the answer unless every region in it allows it (§7.4). A
-batch that mixes a region with `compress: false` and others is sent
-uncompressed, so the opted-out fragment is never in a compressed body.
+The server MUST NOT compress the answer unless every region in it allows it
+([§7.4](#74-encryption)). A batch that mixes a region with compression turned off and others is
+sent uncompressed, so the opted-out fragment is never in a compressed body.
 
 #### Collapsing
 
 A refresh is a mark on an instance and a region, not a request. Many marks
-for the same instance and region before it is drawn (signals, hints,
-`refreshServerRegions()` calls) MUST make one fetch, after the next frame that
-draws it. A signal whose version the instance already holds MUST NOT make a mark at
-all (§8.1).
+for the same instance and region before it is drawn (signals, hints, refresh
+requests from the app) MUST make one fetch, after the next frame that draws
+it. A signal whose version the instance already holds MUST NOT make a mark at
+all ([§8.1](#81-the-push-stream)).
 
 #### Timeouts and failures
 
-Every region request waits at most its region timeout for the answer: 15
-seconds by default, from `nativephp.asgard.region_timeout`. A component that
-uses `UsesServer` can override `serverRegionTimeout()` to set its own. One
-without the trait uses the config value. 0 means no limit. That covers the first
-fetch, `refreshServerRegions()`, and a fetch a push stream signal or a
-refresh hint started (§8.1, §10.2). A region in a batch has its timer too.
-A hard failure reported through `ServerRegion::failed()` counts at
-once, with the reasons of §10.2.
+Every region request waits at most the client's region timeout for its
+answer. 15 seconds is RECOMMENDED as the default, and a client MAY let the app
+set its own per component, with 0 meaning no limit. The timeout covers the
+first fetch, a refresh, and a fetch a push stream signal or a refresh hint
+started ([§8.1](#81-the-push-stream), [§10.2](#102-server-actions-the-default)). A region in a batch has its own timer too. A hard
+failure, with one of the reasons in [§10.2](#102-server-actions-the-default), counts at once.
 
-A failed region MUST keep what it had. It fires
-`Native\Mobile\Events\Asgard\ServerRegionFailed` on the screen it is on: the
-owner, or the screen a child component that owns it is on. Its public
-properties are `region`, `component` (the address), `reason`, `status` (the
-HTTP status, or null), `requestId`, `message` and `placeholder`.
-`placeholder` is true when no fragment ever landed, so the placeholder is
-still up, and false when an earlier fragment stays on screen. The screen
-hears it with `#[On]`, filters included, and draws a frame after:
+A failed region MUST keep what it had. The client MUST surface the failure to
+the app, on the screen the region is on, with:
 
-```php
-#[On(ServerRegionFailed::class, when: ['region' => 'stats'])]
-public function statsFailed(bool $placeholder): void
-{
-    $this->statsFailed = $placeholder;
-}
+- the region name;
+- the component's address;
+- the reason ([§10.2](#102-server-actions-the-default));
+- the HTTP status, when there was one;
+- a message for logs;
+- whether the placeholder is still up: true when no fragment ever landed,
+  false when an earlier fragment stays on screen.
 
-public function retryStats(): void
-{
-    $this->statsFailed = false;
-    $this->refreshServerRegions('stats');
-}
-```
+A failed region MUST NOT be asked for again automatically. Later frames leave
+it alone, so a server that is down is not asked on every frame. To try again,
+the app asks for a refresh of that region, for example from a retry button.
+The retry gets a timer of its own. Whether a client should retry by itself,
+with a backoff, is open question 10 ([§13](#13-open-questions)). Until that is settled, it MUST NOT.
 
-A failed region MUST NOT be asked for again on its own. Later frames leave it
-alone, so a server that is down is not asked on every frame. To try again,
-call `refreshServerRegions()` on the component that owns the region, from the
-handler or a retry button. That component needs `use UsesServer;`. The retry gets a timer of its own.
-
-An answer that lands after the failure MUST be dropped. A request that a newer one
-superseded fires nothing. A covered screen's timers wait until it is on top
-again, as in §10.2. A server screen's own body (§12.1) has its own timer and
-`ServerScreenFailed`, and never fires `ServerRegionFailed`. Regions cannot
-sit inside a fragment (§9.3), so there are no others to leave out.
+An answer that lands after the failure MUST be dropped. A request that a newer
+one superseded fails silently. A covered screen's timers wait until it is on
+top again, as in [§10.2](#102-server-actions-the-default). A server screen's own body ([§12.1](#121-screens)) has its own timer
+and failure, and is never surfaced as a region failure. Regions cannot sit
+inside a fragment ([§9.3](#93-what-a-fragment-may-not-contain)), so there are no others to leave out.
 
 ## 4. Addressing components
 
-A region names its server component by the client component's fully-qualified
-class name converted to dot notation:
+A region request names its server component by an **address**: a string of
+one or more lower-case segments joined by dots. Each segment MUST match
+`[a-z][a-z0-9_]*`. For example:
 
 ```
-App\Native\Components\SalesSummary   →   app.native.components.sales_summary
+app.native.components.sales_summary
+home
 ```
 
-Backslashes become dots; each segment is snake-cased.
+The client and the server agree on addresses. How an implementation derives
+one, for example from the name of a class or module, is not this document's
+business. An address shares one namespace with server screen addresses
+([§12.1](#121-screens)), so a component address MUST NOT also be a screen's address.
 
-A component can name its address instead, with a class attribute:
+**The server MUST NOT turn an address into the name of code and load it.** The
+address arrives from a client and is therefore attacker-controlled. Turning it
+into a class or module name and instantiating it is arbitrary object
+instantiation.
 
-```php
-#[ServerAddress('home')]
-class Home extends NativeComponent
-```
+Instead the server MUST resolve it through a table its developer writes, from
+address to server component. Server screens join the same table ([§12.1](#121-screens)).
+Nothing is discovered by scanning, and an address outside the table MUST NOT
+resolve.
 
-Its requests, `#[Server]` calls and uploads then go to `home`, and only
-pushes for `home` reach it. An address MUST be dot notation with lower-case
-snake_case segments, the same shape in both cases. Naming it keeps the
-client's class name out of the protocol, so moving or renaming the class
-changes nothing on the server. The attribute is not inherited: a subclass
-is addressed by its own class unless it names an address too. A named
-address shares one map with server screens (§12.1), so it MUST NOT be the
-name of one.
-
-**The server MUST NOT convert this identifier back into a class name.** The
-identifier arrives from a client and is therefore attacker-controlled. Turning
-it into a class name and instantiating it is arbitrary object instantiation.
-
-Instead the server MUST resolve it through a map the developer writes. The
-reference server takes it from `config('asgard.components')`
-(`address => class`) and from `Asgard::component($address, $class)` calls at
-boot. Server screens join the same map when they are registered (§12.1).
-Nothing is discovered by scanning, and an address outside the map MUST NOT resolve. Whether the
-address is the client's class in dot notation or one it named, the map is
-what decides. A non-PHP server keeps the same kind of table.
-
-An unknown identifier MUST be a 404. It MUST NOT be a lookup failure that leaks whether
-a class exists.
+An unknown address MUST be a `404 unknown_component`. It MUST NOT be a lookup
+failure that leaks whether some piece of code exists.
 
 ## 5. State
 
@@ -286,39 +232,50 @@ Two pools, with different owners and different trust.
 
 ### 5.1 Client state
 
-The client component's public props. The client authors it, mutates it locally,
-and sends it with each region request.
+The client component's state: a JSON object the client authors, changes
+locally, and sends with each region request.
 
-It is **untrusted input**. The signature in §7 proves it arrived intact from a
+It is **untrusted input**. The signature in [§7](#7-security) proves it arrived intact from a
 holder of a valid session. It does not prove the values are true, because the
 client that produced them is a program on someone else's device. A server MUST
-authorise every action against the authenticated identity from §7.5, never
+authorise every action against the authenticated identity from [§7.5](#75-authentication-is-separate), never
 against something the state claims.
 
-Hydration on the server follows the rules `EdgeSnapshot` already uses in
-`nativephp/mobile-web`: scalars, arrays, backed enums, datetimes and
-Collections, with tagged markers resolved against **exact class allowlists**.
-A payload MUST NOT cause an arbitrary class to be constructed. In
-mobile-web that allowlist is defence in depth behind a server-authored seal.
-Here the payload really is client-authored, so it is the primary control.
+State is plain JSON. A server that turns its values into richer types (dates,
+enumerations, records) MUST do so only through an explicit list of the target
+types it allows. A state payload MUST NOT be able to make a server construct a
+type or run code the server did not choose.
 
 ### 5.2 Server session state
 
-State the server keeps across requests, keyed by session (§6). This is where
+State the server keeps across requests, keyed by session ([§6](#6-sessions)). This is where
 anything the client must not control belongs.
 
 ### 5.3 Compatibility
 
-Halves drift. A field present on one side and not the other is **silently
-ignored** in production and **throws** when `config('app.debug')` is on, the
-way Eloquent's `preventSilentlyDiscardingAttributes` works. The behaviour is
-configurable independently of `app.debug` for teams that want it strict in
-staging.
+Halves drift, so a receiver MUST ignore an object member it does not know.
+That lets a later version add members without breaking older peers. This
+holds for every JSON object in this document, on both sides, unless the
+section that defines the object says otherwise.
+
+Three kinds of object are the exceptions, because an unknown member in them
+could change what runs:
+
+- a callback slot ([§10.1](#101-callback-slots));
+- a navigation ([§12.4](#124-navigation));
+- the body of a method call ([§10.5](#105-method-calls)), and the header of an upload, which is
+  a method call too ([§10.6](#106-uploads)).
+
+In these, a receiver MUST refuse an object with a member it does not know, in
+the way the section that defines it says.
+
+Ignoring a member is not the same as accepting a value. A known member with a
+value of the wrong type is still an error wherever this document says so.
 
 ## 6. Sessions
 
 Asgard sessions exist to correlate state across requests and to make requests
-cheap to reject early. **They are not authentication.** See §7.5.
+cheap to reject early. **They are not authentication.** See [§7.5](#75-authentication-is-separate).
 
 They deliberately do not reuse cookie semantics. Cookies ride along
 automatically; this exchange is explicit, so a client always knows whether it
@@ -327,33 +284,47 @@ has a session and a server MUST NOT issue one it was not asked for.
 ### 6.1 Handshake
 
 The client holds `asgard_key`: a per-app, per-environment public identifier
-compiled into the build. The server holds the same value in its config and
-MUST refuse a handshake that names any other. It is not a secret and it is not key
-material. It only lets a server turn away clients built for some other app.
-The server package generates one (`php artisan asgard:key`), and it is
-documented as unique per app and per environment.
+compiled into the build. The server holds the same value in its
+configuration and MUST refuse a handshake that names any other. It is not a
+secret and it is not key material. It only lets a server turn away clients
+built for some other app. A key SHOULD be random, and MUST be unique per app
+and per environment.
 
 The handshake agrees a session secret without sending it. Each side MUST make an
-ephemeral P-256 key pair for this one handshake and they run ECDH, in the
-spirit of RFC 8291's Web Push key agreement.
+ephemeral P-256 key pair ([FIPS 186-5](https://doi.org/10.6028/NIST.FIPS.186-5)) for this one handshake and they run
+ECDH, in the spirit of [RFC 8291](https://www.rfc-editor.org/rfc/rfc8291)'s Web Push key agreement.
+
+The handshake is always a plain POST to `{base}/session`. It creates a
+session on the server, so it is not a safe request, and QUERY
+([RFC 10008](https://www.rfc-editor.org/rfc/rfc10008)) is only for safe
+ones. It never carries `X-Asgard-Method`:
 
 ```
-→  POST /_asgard/session
+→  POST {base}/session
    Content-Type: application/json
    Authorization: Bearer <token>              (when the app has one)
    { "key": "<asgard_key>", "protocol": 1, "accepts": ["tree/json"],
+     "elements": ["list_item", "toggle"],
      "client_public": "<base64url P-256 point>" }
 
 ←  200
+   Content-Type: application/json
    { "session": "<opaque id>", "server_public": "<base64url P-256 point>",
      "expires_in": 1800, "encoding": "tree/json" }
 ```
 
 - `client_public` and `server_public` MUST be uncompressed points,
-  `0x04 || X || Y`, 65 bytes, in base64url without padding. A point that is
-  malformed or not on the curve MUST be refused with 422.
+  `0x04 || X || Y`, 65 bytes, as defined in [SEC 1 §2.3.3](https://www.secg.org/sec1-v2.pdf), in base64url
+  without padding. A point that is malformed or not on the curve MUST be
+  refused with 422.
+- `elements` lists the element types the client can render beyond the core
+  set ([§9.7](#97-element-types)). It MUST be an array of distinct type names, each matching
+  `^[a-z][a-z0-9_]*$`. It MAY be empty or absent, which means core types
+  only. It MUST NOT name a chrome type ([§9.3](#93-what-a-fragment-may-not-contain)). The server keeps it with the
+  session and MUST NOT send a fragment that uses a type outside the core
+  set and this list ([§9.3](#93-what-a-fragment-may-not-contain)).
 - `session` is an opaque identifier. It goes in a header on every later
-  request.
+  request ([§6.2](#62-use-and-renewal)).
 - Both sides MUST compute the ECDH shared secret (the 32-byte X coordinate) and
   derive the session secret from it with HKDF-SHA256
   ([RFC 5869](https://www.rfc-editor.org/rfc/rfc5869)):
@@ -361,7 +332,8 @@ spirit of RFC 8291's Web Push key agreement.
   ```
   secret = HKDF-SHA256(salt = empty,
                        IKM  = ECDH shared secret,
-                       info = "asgard/1 session" || 0x00 || client_public || server_public,
+                       info = "asgard/1 session" || 0x00
+                              || client_public || server_public,
                        L    = 32)
   ```
 
@@ -369,7 +341,7 @@ spirit of RFC 8291's Web Push key agreement.
   secret to the exact pair of keys this exchange used.
 - Each side MUST discard its private key once the secret is derived. The server
   stores the secret against the session id. The client stores it with the id
-  and the expiry (§6.2).
+  and the expiry ([§6.2](#62-use-and-renewal)).
 - A key the server does not know is `403 {"error":"unknown_key"}`, and so is
   any key while the server has none configured. A protocol the server does
   not speak is `422 {"error":"unsupported_protocol","protocols":[1]}`. An
@@ -377,23 +349,25 @@ spirit of RFC 8291's Web Push key agreement.
   `422 {"error":"unsupported_encoding"}`.
 
 The handshake itself is neither signed nor encrypted. There is nothing to
-sign it with yet, and nothing in it is secret. §7.1 says what that does and
+sign it with yet, and nothing in it is secret. [§7.1](#71-threat-model) says what that does and
 does not leave open.
+
+The handshake does not tell the client which transport works. The client
+finds that out on its first request after the handshake ([§8](#8-transport)).
 
 ### 6.2 Use and renewal
 
-Every region request MUST carry `Asgard-Session-Id: <session>`. Each accepted
-request MUST slide the expiry forward on the server. The client slides its own
-copy when a response verifies.
+Every request after the handshake MUST carry `Asgard-Session-Id: <session>`:
+region requests, actions, method calls, uploads, the push stream and the
+route list. Each accepted request MUST slide the expiry forward on the server.
+The client slides its own copy when a response verifies.
 
-The client keeps the session where every part of the app that makes requests
-can read it. On a device, render calls run on AsyncTask lanes and stream
-requests are signed on the UI lane. Those are separate PHP interpreters with
-no shared memory, so the session lives in the app's cache store (SQLite by
-default), keyed by server URL and `asgard_key`. Only the 32-byte secret is
-stored, and the four keys are derived again on read. The client MUST treat a
-session as gone 60 seconds before `expires_in` says it lapses, so a request
-never races the server's expiry.
+A client keeps one session per base URL and `asgard_key`, where every part of
+the client that makes requests can use it. It need only store the 32-byte
+secret, since the four keys of [§7.2](#72-keys) can be derived from it again. The client
+SHOULD treat a session as gone 60 seconds before `expires_in` says it lapses,
+so a request rarely races the server's expiry. A request that does lose the
+race gets a 419 and is retried once ([§6.3](#63-loss)).
 
 ### 6.3 Loss
 
@@ -404,17 +378,19 @@ and the user.
 | Condition | Status | Client behaviour |
 |---|---|---|
 | Session unknown or expired | `419` | Re-handshake once, retry the request once. |
-| Digest, signature or decryption failed, signature expired, nonce reused | `403` | **MUST NOT retry.** Surface an error. |
+| Digest, signature or decryption failed, signature expired, nonce reused or missing | `403` | **MUST NOT retry.** Surface an error. |
+| Method the endpoint does not accept | `405` | On the first QUERY request after a handshake, fall back to POST as [§8](#8-transport) says. Otherwise **MUST NOT retry.** |
 | Bearer token rejected | `401` | Hand to the app's auth flow. |
 | Unknown component | `404` | Keep the placeholder, log. |
 
 The split between 419 and 403 matters. A signature bug that returned 419 would
-make every client re-handshake and retry forever. A client MUST make exactly one re-handshake and
-one retry per originating request; a second failure surfaces.
+make every client re-handshake and retry forever. A client MUST make exactly
+one re-handshake and one retry per originating request; a second failure
+surfaces.
 
 Some failures only the client can see: a response or pushed event whose
 signature does not verify, that does not decrypt, that names a coding the
-client does not know, or that inflates past the cap in §7.4. The client
+client does not know, or that inflates past the cap in [§7.4](#74-encryption). The client
 treats all of them alike. It logs why. It MUST keep the placeholder (or the
 last fragment it painted) and MUST NOT retry.
 
@@ -430,13 +406,17 @@ specs and says which parts of each it needs:
 - [RFC 8188](https://www.rfc-editor.org/rfc/rfc8188), the `aes128gcm`
   content encoding, for the bodies.
 - [RFC 5869](https://www.rfc-editor.org/rfc/rfc5869), HKDF, and P-256 ECDH
-  for the key agreement in §6.1.
+  ([FIPS 186-5](https://doi.org/10.6028/NIST.FIPS.186-5)) for the key agreement in [§6.1](#61-handshake).
 
 All of them have existing libraries and test vectors, and a reviewer can check
-an implementation against the RFC instead of against this document. Both
-packages test against the published vectors (RFC 8188 §3.1 and §3.2, RFC 9421
-Appendix B.2.5, RFC 9530 Appendix B.1, RFC 5869 Appendix A), and against a
-shared set of Asgard vectors that both must reproduce byte for byte.
+an implementation against the RFC instead of against this document.
+Implementations SHOULD test against the published vectors:
+
+- [RFC 8188 §3.1](https://www.rfc-editor.org/rfc/rfc8188#section-3.1) and
+  [§3.2](https://www.rfc-editor.org/rfc/rfc8188#section-3.2);
+- [RFC 9421 Appendix B.2.5](https://www.rfc-editor.org/rfc/rfc9421#appendix-B.2.5);
+- [RFC 9530 Appendix B.1](https://www.rfc-editor.org/rfc/rfc9530#appendix-B.1);
+- [RFC 5869 Appendix A](https://www.rfc-editor.org/rfc/rfc5869#appendix-A).
 
 ### 7.1 Threat model
 
@@ -444,7 +424,7 @@ Assume: TLS everywhere, but intermediaries that terminate it and log. Assume
 the client binary is readable and `asgard_key` is extractable, because it is
 compiled into an app anyone can download. Assume some clients are hostile.
 
-The key agreement in §6.1 is what defeats the logging proxy. From the
+The key agreement in [§6.1](#61-handshake) is what defeats the logging proxy. From the
 handshake the proxy learns `asgard_key`, both public keys and the session id.
 None of those, alone or together, gives it the secret: getting the secret from
 the public keys is the elliptic-curve Diffie-Hellman problem. A proxy that
@@ -461,7 +441,7 @@ rewrite.
 
 ### 7.2 Keys
 
-Every key comes from the session `secret` agreed in the handshake (§6.1).
+Every key comes from the session `secret` agreed in the handshake ([§6.1](#61-handshake)).
 `secret` MUST NOT be used directly. Each side derives four keys from it with
 HKDF-SHA256 ([RFC 5869](https://www.rfc-editor.org/rfc/rfc5869)), with an
 empty salt and these `info` labels:
@@ -481,23 +461,25 @@ and separate keys per purpose mean a bug in one use cannot leak another.
 `Asgard-Session-Id` and is not secret, so naming the key with it tells an
 observer nothing new. The receiver looks the session up by `keyid`, derives
 the key for the direction it is checking, and verifies. An unknown `keyid` is
-the 419 in §6.3; a known one that fails is the 403.
+the 419 in [§6.3](#63-loss); a known one that fails is the 403.
 
 The secret itself MUST NOT cross the wire.
 
-### 7.3 Signatures (RFC 9421)
+### 7.3 Signatures
 
-Both sides MUST sign with `hmac-sha256` (RFC 9421 §3.3.3) under the label `asgard`,
-with `tag="asgard/1"`, so a signature made for Asgard cannot be confused with
-any other signature the app's HTTP stack adds.
+Signatures use HTTP Message Signatures, [RFC 9421](https://www.rfc-editor.org/rfc/rfc9421).
+
+Both sides MUST sign with `hmac-sha256` ([RFC 9421 §3.3.3](https://www.rfc-editor.org/rfc/rfc9421#section-3.3.3)) under the label
+`asgard`, with `tag="asgard/1"`, so a signature made for Asgard cannot be
+confused with any other signature the app's HTTP stack adds.
 
 Bodies MUST be covered through `Content-Digest`
 ([RFC 9530](https://www.rfc-editor.org/rfc/rfc9530)) using `sha-256`. The
-digest is taken over the content as sent, which is the ciphertext from §7.4.
+digest is taken over the content as sent, which is the ciphertext from [§7.4](#74-encryption).
 That is what lets the receiver check the signature before it decrypts
-anything (§7.6).
+anything ([§7.6](#76-rejecting-early)).
 
-**A region request** covers:
+**A request** (every request after the handshake, [§6.2](#62-use-and-renewal)) covers:
 
 ```
 ("@method" "@authority" "@path" "content-type" "content-encoding"
@@ -509,14 +491,14 @@ anything (§7.6).
 with the port when it is not the scheme's default. `@path` is the path as
 sent, without the query.
 
-Two more headers MUST be covered when, and only when, the request carries them, after the
-rest and in this order:
+Two more headers MUST be covered when, and only when, the request carries
+them, after the rest and in this order:
 
 - `"x-asgard-method"`, when the client falls back to POST plus
-  `X-Asgard-Method: QUERY` (§8), so the verb it meant is signed too.
+  `X-Asgard-Method: QUERY` ([§8](#8-transport)), so the verb it meant is signed too.
 - `"authorization"`, when the app sends a bearer token. Covering it binds the
   token to the session: a token cannot be lifted from one signed request and
-  replayed under another session's signature. RFC 9421 cannot cover a
+  replayed under another session's signature. [RFC 9421](https://www.rfc-editor.org/rfc/rfc9421) cannot cover a
   component the message does not have, so a request without a token MUST NOT
   list it.
 
@@ -529,14 +511,21 @@ plus `nonce` where the next paragraph says. A receiver MUST refuse any other
 parameter, a missing one, an `alg` other than `hmac-sha256`, a `tag` other
 than `asgard/1`, and a `keyid` that is not the `Asgard-Session-Id`.
 
-A server action (a request with an `action` member, §10.2) is not a safe
-request, and neither is a `#[Server]` call (§10.5) or an upload (§10.6), so its signature MUST also
-carry a `nonce` parameter: 16 to 64 base64url characters, which the client
-MUST fill with 16 random bytes. The server MUST remember nonces per session until
-their `expires`, plus the clock skew allowance, and MUST refuse a repeat with 403.
-An action or call whose signature has no nonce MUST get
-`403 {"error":"nonce_required"}`. Region renders and stream requests
-are reads and MUST NOT carry a nonce.
+A server action (a request with an `action` member, [§10.2](#102-server-actions-the-default)) is not a safe
+request, and neither is a method call ([§10.5](#105-method-calls)) or an upload ([§10.6](#106-uploads)), so its
+signature MUST also carry a `nonce` parameter: 16 to 64 base64url characters,
+which the client MUST fill with 16 random bytes. The server MUST remember
+nonces per session until their `expires`, plus the clock skew allowance, and
+MUST refuse a repeat with 403. An action, method call or upload whose
+signature has no nonce MUST get `403 {"error":"nonce_required"}`. Region
+renders, stream requests and the route list are reads and MUST NOT carry a
+nonce.
+
+A call or an upload is known from its endpoint, so the server MUST refuse a
+missing nonce there before it decrypts, as an early rejection (below). An
+action is known only from its body, so on `{base}/render` the server can only
+find a missing nonce after it decrypts. That 403 is sealed like any other
+answer.
 
 **A response** covers:
 
@@ -547,16 +536,30 @@ are reads and MUST NOT carry a nonce.
 ```
 
 `"signature";req;key="asgard"` pulls the request's own signature into the
-response's (RFC 9421 §2.4). A response therefore only verifies against the
+response's ([RFC 9421 §2.4](https://www.rfc-editor.org/rfc/rfc9421#section-2.4)). A response therefore only verifies against the
 request it answers, and a fragment captured from one request cannot be
 replayed as the answer to another.
 
-Every answer to a request that passed the checks in §7.6 MUST be sealed this way,
-whatever its status. A 404 or a 422 is signed and encrypted like a 200. The
-early rejections (405, 419 and the 403 for a failed check) are plain,
-unsigned JSON: there is either no session to sign with or no reason to trust
-the one claimed. A client MUST act on the status of an unsigned answer only to
-re-handshake on 419 and to stop on 403, and MUST NOT read anything else from it.
+Every answer to a request that passed the checks in [§7.6](#76-rejecting-early) MUST be sealed this
+way, whatever its status. A 404 or a 422 is signed and encrypted like a 200.
+
+**Early rejections** are the exception. They are plain, unsigned JSON, because
+there is either no session to sign with or no reason to trust the one
+claimed. These are all of them:
+
+| Status | Body | When |
+|---|---|---|
+| 405 | `{"error":"method_not_allowed"}` | The request used a method the endpoint does not accept: on `{base}/session` anything but POST, elsewhere anything other than QUERY, or POST with `X-Asgard-Method: QUERY` ([§8](#8-transport)). |
+| 413 | `{"error":"too_large"}` | An upload the server can tell is too big from its size alone ([§10.6](#106-uploads)). |
+| 419 | `{"error":"session_expired"}` | `Asgard-Session-Id` is missing, unknown or expired ([§6.3](#63-loss)). |
+| 403 | `{"error":"forbidden"}` | A check in [§7.6](#76-rejecting-early) failed: the digest, the signature or its freshness, a reused nonce, or decryption. |
+| 403 | `{"error":"nonce_required"}` | A method call or upload whose signature has no nonce (above). |
+
+A body MAY also carry a `message` string for logs. A client MUST act on the
+status of an unsigned answer only: to fall back on a 405 to the first QUERY
+request after a handshake ([§8](#8-transport)), to re-handshake on 419, and to
+stop on 403 or 413. It MUST NOT read anything else from it. An unsigned answer
+with any other status is a failure like a bad signature ([§6.3](#63-loss)).
 
 Clock skew: `created` MAY be up to 60 seconds in the future, and `expires`
 MUST be at most 300 seconds after `created`. A request past its `expires` MUST be
@@ -571,19 +574,21 @@ a genuine copy of the app, and it cannot. `asgard_key` is public by
 construction, so anyone can complete a handshake. The signature is an
 integrity check and a cheap early filter, not authentication.
 
-### 7.4 Encryption (RFC 8188)
+### 7.4 Encryption
+
+Bodies are encrypted with the `aes128gcm` content coding of [RFC 8188](https://www.rfc-editor.org/rfc/rfc8188).
 
 Request and response bodies MUST use `Content-Encoding: aes128gcm`. The input key
 material is `enc_c` for requests and `enc_s` for responses. Every message MUST get
-a fresh random 16-byte salt, so the content-encryption key and nonce RFC 8188
-derives from them never repeat. The `keyid` in the RFC 8188 header MUST be the
+a fresh random 16-byte salt, so the content-encryption key and nonce [RFC 8188](https://www.rfc-editor.org/rfc/rfc8188)
+derives from them never repeat. The `keyid` in the [RFC 8188](https://www.rfc-editor.org/rfc/rfc8188) header MUST be the
 session id, the same as in the signature, and the receiver MUST refuse a body
 whose `keyid` is any other. The record size MUST be the default 4096. A body
 longer than one record is split across several, and a receiver MUST refuse one
 that is truncated: the last record MUST carry the `0x02` delimiter.
 
-A client MUST NOT let its HTTP library decode the body for it. curl, for one,
-fails outright on a content coding it does not know.
+A client MUST NOT let its HTTP library decode the body for it. Some HTTP
+libraries fail outright on a content coding they do not know.
 
 Inside TLS this is redundant against a network attacker. It is not redundant
 against a logging proxy, which is the case it exists for.
@@ -596,47 +601,53 @@ travels on every request. The secret never travels at all.
 
 Fragments in `tree/json` are encrypted before signing, and the `Content-Type`
 stays `application/json`. The encoding is a property of the transfer, not of
-the fragment format, so §9 is unchanged.
+the fragment format, so [§9](#9-fragment-format) is unchanged.
 
 **Compression.** Nothing between the server and the client can compress an
 encrypted body, so the server compresses fragments itself, before encrypting
 them. A 200-row list fragment of about 52 KB went over the wire as 2.4 KB.
 
-- Only responses and pushed events are compressed. Requests MUST NOT be compressed: they
-  are small, and they carry client state. A server MUST refuse a request with any
-  coding other than `aes128gcm`.
-- `Content-Encoding` MUST stay `aes128gcm`. Every sealed response MUST also carry
-  `Asgard-Content-Coding`, which is `gzip` when the plaintext was gzipped
-  before encryption and `identity` when it was not. The header is a covered
-  component of every response (§7.3), so it cannot be stripped or flipped.
-  The receiver undoes the steps in reverse: it decrypts, then gunzips when
-  the header says `gzip`. Any other value, or no header, MUST be refused.
-- Why not the stacked `Content-Encoding: gzip, aes128gcm` that RFC 9110 §8.4
-  allows: Cloudflare rewrites that header to `aes128gcm` and passes the body
-  through unchanged, so the signature fails and the response is lost. A
-  header of Asgard's own is left alone.
-- Only a region's fragment MAY be compressed, and only when it is at least 1024
-  bytes. Below that the saving is too small to matter. An action's answer is
-  the region's fragment, so it follows the region. Errors MUST NOT be
+- Only responses and pushed events are compressed. Requests MUST NOT be
+  compressed: they are small, and they carry client state. A server MUST
+  refuse a request with any coding other than `aes128gcm`.
+- `Content-Encoding` MUST stay `aes128gcm`. Every sealed response MUST also
+  carry `Asgard-Content-Coding`, which is `gzip` when the plaintext was
+  gzipped before encryption and `identity` when it was not. The header is a
+  covered component of every response ([§7.3](#73-signatures)), so it cannot be stripped or
+  flipped. The receiver undoes the steps in reverse: it decrypts, then gunzips
+  when the header says `gzip`. Any other value, or no header, MUST be refused.
+- Why not the stacked `Content-Encoding: gzip, aes128gcm` that [RFC 9110 §8.4](https://www.rfc-editor.org/rfc/rfc9110#section-8.4)
+  allows: at least one major CDN rewrites that header to `aes128gcm` and
+  passes the body through unchanged, so the signature fails and the response
+  is lost. A header of Asgard's own is left alone.
+- Only a region's fragment MAY be compressed, and only when it is at least
+  1024 bytes. Below that the saving is too small to matter. An action's answer
+  is the region's fragment, so it follows the region. Errors MUST NOT be
   compressed: they are small and may echo what the client sent.
-- The gzip member MUST have a fixed header (no file name, mtime 0, OS 255) and MUST be
-  deflated at level 6, so the same input gives the same bytes on any server.
-- A client inflates in small steps and MUST give up as soon as the output passes
-  **8 MiB** (8,388,608 bytes). Going over is a failure like a bad signature
-  (§6.3). No real fragment comes near it, and it stops a small body from
-  expanding into one that exhausts the device's memory.
+- The gzip member ([RFC 1952](https://www.rfc-editor.org/rfc/rfc1952)) MUST have a fixed header (no file name, mtime
+  0, OS 255) and MUST be deflated at level 6, so the same input gives the same
+  bytes on any server.
+- A client inflates in small steps and MUST give up as soon as the output
+  passes **8 MiB** (8,388,608 bytes). Going over is a failure like a bad
+  signature ([§6.3](#63-loss)). No real fragment comes near it, and it stops a small body
+  from expanding into one that exhausts the device's memory.
 
 **When to turn it off.** Compressing a body that holds both a secret and text
 someone else can choose leaks the secret through the body's length. That is
 the BREACH attack, and encryption does not stop it, because encryption hides
 the bytes and not how many there are. An attacker who can put guesses into a
 fragment (a search term echoed back, a display name they set) and see the
-size of the answer can recover the secret a character at a time. So a region
-whose fragment shows a secret, such as a token, a recovery code or a full
-account number, next to anything another person controls, MUST turn compression
-off: `#[Region('account', compress: false)]` on the server. Its responses and
-events MUST then go out as plain `aes128gcm`. A region that shows only the user's
-own data, or only public data, has nothing to leak and keeps it on.
+size of the answer can recover the secret a character at a time.
+
+So a server SHOULD turn compression off for a region whose fragment shows a
+secret, such as a token, a recovery code or a full account number, next to
+text that another person or the device can choose. That is the BREACH-style
+risk: the secret and the attacker's guess share one compressed body, and the
+body's length gives the guess away. When a region has compression turned off,
+its responses and events MUST go out as plain `aes128gcm`. A region that shows
+only the user's own data, or only public data, has nothing to leak and keeps
+compression on. Which regions turn it off is the server's choice. It never
+crosses the wire.
 
 ### 7.5 Authentication is separate
 
@@ -650,68 +661,93 @@ a valid signature and an invalid token MUST be rejected.
 
 Order of checks, cheapest and most decisive first: session id known →
 `Content-Digest` matches the body → signature valid and fresh → nonce not seen
-before (actions) → decrypt → bearer token → component resolvable → hydrate.
-A request that fails any of the first five MUST be discarded before anything parses
-its body. On the server the first five MUST run ahead of the app's own middleware,
-so bearer auth only ever sees a request already known to be intact.
+before (actions, calls and uploads) → decrypt → bearer token → component
+resolvable → restore state. A request that fails any of the first five MUST be
+discarded before anything parses its body. On the server the first five MUST
+run ahead of the rest of the server's own request handling, so bearer auth
+only ever sees a request already known to be intact.
 
-A client MUST check a response in the same order and MUST keep the placeholder on any
-failure. It MUST NOT render a fragment whose signature did not verify, and the
-same holds for pushed events (§8.1).
+A client MUST check a response in the same order and MUST keep the placeholder
+on any failure. It MUST NOT render a fragment whose signature did not verify,
+and the same holds for pushed events ([§8.1](#81-the-push-stream)).
 
 ## 8. Transport
 
-Region requests prefer **HTTP QUERY** over HTTPS: a safe method that carries a
-body. A body is required (state can be large and structured) and a GET query
-string is the wrong place for it: length-limited, and logged by everything in
-the path.
+A client is configured with one base URL for its server, written `{base}`
+in this document: an `https:` URL with no query or fragment, such as
+`https://api.example.com/asgard`. Every endpoint is a path below it:
 
-**QUERY cannot be the only transport.** OWASP Core Rule Set ships
-`tx.allowed_methods=GET HEAD POST OPTIONS` as its default
-(`REQUEST-901-INITIALIZATION.conf`), and rule 911100 blocks everything else at
-paranoia level 1, which is on by default. CRS rides inside Cloudflare's managed
-rules, Azure Front Door and App Gateway DRS, and Google Cloud Armor. That makes
-the failure follow any customer who switches on a managed WAF, on any platform,
-rather than being confined to particular vendors. Akamai is worse: `allowOptions`
-permits GET, HEAD and OPTIONS and 501s the rest, with per-verb allow behaviours
-and no `allowQuery` among them, so an Akamai customer has no configuration path
-to enable it at all.
+| Endpoint | Used for |
+|---|---|
+| `{base}/session` | The handshake, always plain POST ([§6.1](#61-handshake)) |
+| `{base}/render` | Region requests and actions ([§3.1](#31-when-the-client-asks), [§10.2](#102-server-actions-the-default)) |
+| `{base}/stream` | The push stream ([§8.1](#81-the-push-stream)) |
+| `{base}/call` | Method calls ([§10.5](#105-method-calls)) |
+| `{base}/upload` | Uploads ([§10.6](#106-uploads)) |
+| `{base}/routes` | The server's route list ([§12.3](#123-routes)) |
 
-So the handshake negotiates transport, and the client latches the answer per
-installation:
+`{base}` has no trailing slash. A client MUST NOT derive it from anything
+else, such as `asgard_key`.
 
-1. **QUERY** where it works.
-2. **POST plus `X-Asgard-Method: QUERY`** where it does not.
+Requests prefer **HTTP QUERY** ([RFC 10008](https://www.rfc-editor.org/rfc/rfc10008)) over HTTPS: a safe method that
+carries a body. A body is required (state can be large and structured) and a
+GET query string is the wrong place for it: length-limited, and logged by
+everything in the path.
 
-The override header must be package-owned. All three conventional names
-(`X-HTTP-Method-Override`, `X-HTTP-Method`, `X-Method-Override`) are in CRS's
-default `tx.restricted_headers_basic` and are blocked at PL1, and CloudFront
-strips the first independently. The `_method` parameter is blocked at PL2+ too.
+**QUERY cannot be the only transport.** The most widely deployed web
+application firewall rule set allows only GET, HEAD, POST and OPTIONS by
+default, and blocks every other method at its lowest paranoia level, which is
+on by default. That rule set ships inside several of the big cloud
+providers' managed firewalls, so the failure follows any server whose owner
+switches one on, on any platform. Some CDNs refuse unknown methods with a 501
+and offer no setting to allow QUERY at all.
 
-Two more rules fall out of the same research:
+The handshake is the exception. It always goes as a plain POST, because it
+creates a session and so is not safe ([§6.1](#61-handshake)). Every other
+endpoint takes QUERY or its fallback.
 
-- **A client MUST send `Content-Type`.** RFC 10008 requires it on QUERY, and Envoy
-  1.40 will reject a QUERY without one on every protocol. Traffic that works
-  today would break on an upgrade.
-- **The verb MUST be uppercase** on both clients.
+A server cannot know whether something in front of it blocks QUERY. So
+transport is probed by the client, not negotiated:
 
-On the server side, Laravel 14 has `Route::query()` and treats QUERY as
-CSRF-exempt. On Laravel 13 and earlier the route is `Route::match(['QUERY'], …)`
-and CSRF exemption is the package's job.
+1. The client sends its first request after the handshake (a region
+   request, the route list, or whichever comes first) as **QUERY**.
+2. If the answer is a 405, a 501, or anything that is not a valid Asgard
+   answer, the client MUST send that request again as **POST plus
+   `X-Asgard-Method: QUERY`**, signed afresh, since the method is a covered
+   component ([§7.3](#73-signatures)).
+3. The client MUST remember which form worked, for the installation, and use
+   it for every later request except the handshake.
 
-One endpoint handles all region requests, in the shape of Livewire's `/update`
-and mobile-web's `EdgeEndpoint`. The path is derived per installation from the
-app key rather than being a well-known constant, so scanners cannot target it
-without already having a client:
+A valid Asgard answer is a response sealed as [§7.3](#73-signatures) says, or
+one of the unsigned early rejections listed there other than 405. A network
+failure is not an answer: the client tries QUERY again on its next request.
+When the POST form fails too, that request has failed with the usual reason
+([§10.2](#102-server-actions-the-default)), and the client remembers
+nothing.
 
-```
-/_asgard-<8 hex>/render
-```
+A server MUST accept both forms on every endpoint except `{base}/session`,
+which takes only a plain POST. On those endpoints it MUST refuse a POST
+without `X-Asgard-Method: QUERY`, and any other method, with 405
+([§7.3](#73-signatures)). On `{base}/session` it MUST refuse any method other
+than POST with 405.
+
+Background on why QUERY needs a fallback is in [rationale.md](rationale.md).
+
+The override header is Asgard's own. The conventional names
+(`X-HTTP-Method-Override`, `X-HTTP-Method`, `X-Method-Override`) are blocked by
+default in common firewall rule sets, and at least one CDN strips the first.
+A `_method` body parameter is blocked at higher paranoia levels too.
+
+Two more rules:
+
+- **A client MUST send `Content-Type`.** [RFC 10008](https://www.rfc-editor.org/rfc/rfc10008) requires it on QUERY, and
+  some proxies already reject a QUERY without one.
+- **The verb MUST be uppercase.**
 
 ### 8.1 The push stream
 
-A client holds one Server-Sent Events stream open per device, so the server
-can say a region changed without being asked. The stream carries a
+A client holds one Server-Sent Events stream ([SSE](https://html.spec.whatwg.org/multipage/server-sent-events.html)) open per device, so the
+server can say a region changed without being asked. The stream carries a
 **subscription** for each component instance the device has on screen, and
 nothing else.
 
@@ -722,12 +758,12 @@ server marks **shared** renders the same for everyone with the same state,
 and for those the stream sends the fragment inline instead. Shared is
 opt-in, so a region left unmarked costs a round trip, never a leak.
 
-**Cost.** An open stream holds one server worker (a PHP-FPM child, say) for
+**Cost.** On many servers an open stream holds a worker process or thread for
 its whole lifetime. That is why a device opens one stream, not one per
 component, and why it drops what is no longer on screen. A device with no
 server regions on screen holds no stream at all.
 
-**Opening it.** `{path}/stream`, in the same two forms as render. The body
+**Opening it.** `{base}/stream`, in either form from [§8](#8-transport). The body
 lists every subscription the device wants:
 
 ```json
@@ -742,11 +778,11 @@ lists every subscription the device wants:
 - `id` is the client's name for a subscription. It MUST be 1 to 32 characters of
   `A-Z a-z 0-9 _ -`, unique within the request. The server only echoes it.
 - `component`, `state` and each name in `regions` follow the rules of a
-  region request (§4, §5). `regions` MUST hold 1 to 16 distinct names.
+  region request ([§4](#4-addressing-components), [§5](#5-state)). `regions` MUST hold 1 to 16 distinct names.
 - `versions` is optional. It maps a region to the version token the client
   holds for it (below).
-- There MUST NOT be an `action`, at the top level or in a subscription, and a
-  subscription MUST NOT have other members.
+- There MUST NOT be an `action`, at the top level or in a subscription.
+  Other members the server does not know are ignored ([§5.3](#53-compatibility)).
 
 A subscription is one component instance's view of the server: one address
 and one state. Two instances with the same address and the same state share a
@@ -757,11 +793,11 @@ The server MUST check every subscription before it streams anything, and a
 request it refuses gets the answer render would give, sealed the same way:
 a 422 for a bad body, a 404 `unknown_component` for an unknown address or
 region in any subscription, a 500 `invalid_fragment` for a fragment it cannot
-send. It works out each subscription's channels from that subscription's
-state (§12, `channels()`), and reads every counter of every subscription in
-one read per poll.
+send. It works out which push channels each subscription watches from that
+subscription's state, and reads every counter of every subscription in one
+read per poll.
 
-The request MUST be sealed exactly like a region request (§7.3, §7.4). It is a
+The request MUST be sealed exactly like a region request ([§7.3](#73-signatures), [§7.4](#74-encryption)). It is a
 read, so it has no nonce.
 
 **The device declares the whole set.** The client works the set out from what
@@ -782,7 +818,8 @@ token of up to 64 characters of `A-Z a-z 0-9 _ -`, derived from the push
 counters that region watches for that address, state and set of channels.
 
 ```json
-{"protocol":1,"region":"screen","version":"q3V0bG9yZW1pcHN1","fragment":{…}}
+{"protocol":1,"region":"screen","version":"q3V0bG9yZW1pcHN1",
+ "fragment":{"type":"text","props":{"text":"Promo 1"}},"chrome":{}}
 ```
 
 The client keeps the latest token per instance and region, from render
@@ -800,13 +837,14 @@ stream that needs that answer reuses it (from a short-lived cache, say),
 sealing it for its own session. Because that cache is not keyed by user, a
 server MUST render a shared region on the stream with no authenticated user. A
 shared region therefore MUST NOT depend on the user or on secrets, which
-also makes compressing it safe (§7.4). The region request itself is not
+also makes compressing it safe ([§7.4](#74-encryption)). The region request itself is not
 affected: a shared region renders there as any other, with the caller's
 credentials.
 
-**The answer** is `200 text/event-stream`, and its headers are not signed. The
-device's native code holds the connection and PHP never sees those headers, so
-a signature on them would protect nothing. Each event carries its own instead.
+**The answer** is `200 text/event-stream`, and its headers are not signed.
+The part of a client that holds a long-lived connection is often not the part
+that checks signatures, and may not pass headers on, so a signature on them
+would protect nothing. Each event carries its own instead.
 
 **Events.** There are two, `signal` and `fragment`, sealed the same way:
 
@@ -820,19 +858,21 @@ event: fragment
 data: {"body":"<base64url>","enc":"gzip","sig":"<base64url>"}
 ```
 
-The three members MUST be present, in this order, and there MUST NOT be others.
+The three members MUST be present, and SHOULD be sent in this order. A client
+ignores any other member ([§5.3](#53-compatibility)), since none of them is covered by `sig`.
 
-A `signal`'s message is `{"protocol":1,"subscription":…,"region":…,"version":…}`
-and MUST NOT be compressed. A `fragment` event MUST be sent only for a shared region,
-and its message adds the fragment, with `chrome` too for a server screen
-(§12.2): `{"protocol":1,"subscription":…,"region":…,"version":…,"fragment":…}`.
+A `signal`'s message is
+`{"protocol":1,"subscription":…,"region":…,"version":…}` and MUST NOT be
+compressed. A `fragment` event MUST be sent only for a shared region, and its
+message adds the fragment, with `chrome` too for a server screen ([§12.2](#122-chrome)):
+`{"protocol":1,"subscription":…,"region":…,"version":…,"fragment":…}`.
 
-`body` is the message, compressed when `enc` says so, encrypted as `aes128gcm` under `enc_s` with
-the session id as `keyid`, a fresh salt per event and record size 4096, then
-encoded as base64url without padding.
+`body` is the message, compressed when `enc` says so, encrypted as `aes128gcm`
+under `enc_s` with the session id as `keyid`, a fresh salt per event and
+record size 4096, then encoded as base64url without padding.
 
 `enc` is `gzip` when the message was gzipped before encryption and
-`identity` when it was not. The rules are those for responses in §7.4: the
+`identity` when it was not. The rules are those for responses in [§7.4](#74-encryption): the
 1024-byte minimum, the region's opt-out and the 8 MiB cap.
 
 `sig` is HMAC-SHA256 under `sig_s`, in base64url without padding, of this
@@ -849,36 +889,39 @@ asgard/1 event
 
 The six lines are joined by a single LF (0x0A), with no LF after `body`. The
 stream request's signature is the 32 raw bytes from its `Signature` header,
-in base64 with padding (RFC 4648 §4), as that header carries it. `id` and
+in base64 with padding ([RFC 4648 §4](https://www.rfc-editor.org/rfc/rfc4648#section-4)), as that header carries it. `id` and
 `event` are the SSE fields as sent. `body` is the base64url text exactly as it
 appears in `data`.
 
 Covering the request's signature binds every event to the one request that
-opened its stream, the way `"signature";req` binds a response (§7.3). An event
+opened its stream, the way `"signature";req` binds a response ([§7.3](#73-signatures)). An event
 replayed into another session, another stream, or the same stream after it
 reconnects carries the wrong request signature and fails. Covering `id` and
 `event` stops an event being renumbered or renamed. Covering `enc` stops the
 marker being stripped or flipped, which would otherwise make a client gunzip
-a body that was never compressed, or paint a compressed one as it stands. The fixed first line means
-the string can never be read as an RFC 9421 signature base.
+a body that was never compressed, or paint a compressed one as it stands.
+The fixed first line means the string can never be read as an [RFC 9421](https://www.rfc-editor.org/rfc/rfc9421)
+signature base.
 
 The client MUST verify `sig`, then decrypt, then gunzip when `enc` is `gzip`,
 then check that `subscription` is one it opened this stream with and that
 `region` is one of that subscription's. An event that fails any of those
-checks is logged and MUST be dropped, never acted on. Then it MUST act only on instances
-of that address that asked with that subscription's state:
+checks is logged and MUST be dropped, never acted on. Then it MUST act only on
+instances of that address that asked with that subscription's state:
 
 - On a `signal`, each instance whose token for the region differs from the
   signal's is marked to fetch the region again, exactly as a refresh would
-  (§3.1). It fetches after the next frame that draws it, so an instance on a
+  ([§3.1](#31-when-the-client-asks)). It fetches after the next frame that draws it, so an instance on a
   covered screen fetches when that screen is drawn again, and several
   signals before then make one fetch. The fragment on screen stays until the
   answer lands, and a server screen's chrome comes with it. An instance that
-  already holds that version MUST ignore it. A refresh hint (§10.2) is handled
+  already holds that version MUST ignore it. A refresh hint ([§10.2](#102-server-actions-the-default)) is handled
   the same way, without a version.
-- On a `fragment`, it paints the fragment and keeps its `version`. `retry:` lines and `: ping` comments are not covered. They
-carry nothing a client paints. Within one live connection, ordering and
-duplication are TLS's job, as for any response.
+- On a `fragment`, it paints the fragment and keeps its `version`.
+
+`retry:` lines and `: ping` comments are not covered. They carry nothing a
+client paints. Within one live connection, ordering and duplication are TLS's
+job, as for any response.
 
 **Reconnecting.** A stream request's signature expires 300 seconds after its
 `created`, like any other. So a client MUST NOT reconnect by replaying the
@@ -887,29 +930,29 @@ it, and before then the server would be accepting a replay. Every connection
 MUST be signed afresh.
 
 1. When a connection drops for a reason worth retrying (a network error, a
-   5xx, or the server ending the stream), the native side waits out its
-   backoff: the server's `retry`, doubled for each failure in a row, at most
-   30 seconds. Then it tells PHP the stream should be reopened. It does not
-   reconnect by itself.
-2. PHP signs a new stream request with the current session and opens the
-   stream again. The native side carries `Last-Event-ID` and the backoff over
-   to the new connection.
-3. A 419 gets one new handshake, off the UI lane, and one more try. That
-   allowance resets once a connection succeeds.
-4. A 403, a 204 or any other 4xx MUST end the stream. The regions keep their last
-   fragments, and the next change to the set opens it again.
+   5xx, or the server ending the stream), the client waits out its backoff:
+   the server's `retry`, doubled for each failure in a row, at most 30
+   seconds.
+2. Then it signs a new stream request with the current session and opens the
+   stream again, carrying `Last-Event-ID` and the backoff over to the new
+   connection.
+3. A 419 gets one new handshake and one more try. That allowance resets once
+   a connection succeeds. The client MUST NOT block its UI on the handshake.
+4. A 403, a 204 or any other 4xx MUST end the stream. The regions keep their
+   last fragments, and the next change to the set opens it again.
 
 A reconnect sends the tokens the client holds, so it only hears about what
-it missed. A token that is behind only costs an extra event. `Last-Event-ID` is not signed, and a server MUST ignore it: the
-tokens decide what is sent on connect.
+it missed. A token that is behind only costs an extra event. `Last-Event-ID`
+is not signed, and a server MUST ignore it: the tokens decide what is sent on
+connect.
 
 The server MUST send a `: ping` comment every 5 seconds. A server only learns
 that a client went away when a write fails, so the ping is also how soon a
 dead connection gives its worker back.
 
 The signature is checked once, when the stream opens. How long a server then
-keeps the stream open (`asgard.stream.lifetime`, 300 seconds by default) has
-nothing to do with the signature window.
+keeps the stream open (300 seconds is a sensible default) has nothing to do
+with the signature window.
 
 *Implementer note.* A signal carries nothing rendered, so the stream does not
 have to be held by the application that renders. Something else could hold
@@ -919,209 +962,293 @@ ticket the application issues for them.
 ## 9. Fragment format
 
 A server returns a **logical tree**: element type names, props, and children.
-It does not return the client's in-memory node layout.
+It does not return any client's in-memory node layout.
 
-This is forced. The device's flat node format encodes each node's type as an
-index into a table the device accumulates over a session, in insertion order,
-and it is host-endian. Indices produced anywhere else mean something else on
-arrival. A server also cannot know the device's platform-resolved icon names,
-its `ios:`/`android:` Tailwind variants, or which fonts are in its bundle.
+This is forced. A client's own render format is its business. It may number
+element types in the order it meets them, lay nodes out in its own byte
+order, or change between builds. A server also cannot know the device's
+platform-specific icon names, its platform style variants, or which fonts
+are in its bundle.
 
-So the server emits names and the **client encodes**. The client interns types
-into its own table, resolves icons and platform variants for the device it is
-actually running on, and writes its own flat buffer. One encode per fragment,
-in exchange for a payload that is immune to endianness, platform, and format
-version drift.
+So the server emits names and the **client encodes**. The client resolves
+types, icons and platform variants for the device it is actually running on,
+and builds its own render tree. One encode per fragment, in exchange for a
+payload that is immune to byte order, platform, and format version drift.
 
 `accepts` in the handshake exists so a future encoding can be added without a
-breaking change. v1 defines one: `tree/json`.
+breaking change. Version 1 defines one: `tree/json`.
 
 ### 9.1 Node shape
 
-```jsonc
+A fragment's root is either one node or an array of nodes. An array puts its
+nodes side by side in the region, in order, as children of the region.
+
+```json
 {
-  "type": "column",           // required, an element type name
-  "key": "total",             // optional, stable identity among siblings
-  "props": { "text": "42" },  // optional, see 9.4
-  "class": "p-4 gap-2",       // optional, Tailwind, resolved client-side
-  "on_press": {"call": "select", "args": ["a"]},  // optional callback slots, see 10.1
-  "children": [ /* nodes */ ]
+  "type": "column",
+  "key": "total",
+  "class": "p-4 gap-2",
+  "props": {"a11yLabel": "Sales total"},
+  "on_press": {"call": "select", "args": ["a"]},
+  "children": [
+    {"type": "text", "props": {"text": "42"}}
+  ]
 }
 ```
+
+- `type` is REQUIRED: an element type name ([§9.7](#97-element-types)).
+- `key` is OPTIONAL: a stable identity among siblings ([§9.2](#92-the-client-owns-its-identifiers-in-two-separate-namespaces)). It is a
+  string or an integer, and the client compares keys as strings, so `7` and
+  `"7"` are the same key. Siblings MUST NOT share a key.
+- `class` is OPTIONAL: style utility names ([§9.7](#97-element-types)).
+- `props` is OPTIONAL: an object of the type's props ([§9.7](#97-element-types)).
+- `on_press`, `on_long_press`, `on_double_tap`, `on_change` and `on_submit`
+  are OPTIONAL callback slots ([§10.1](#101-callback-slots)).
+- `children` is OPTIONAL: an array of nodes, in order.
+
+The root is at depth 1, and each level of `children` adds one. A client MUST
+refuse a fragment nested deeper than 64 levels ([§9.4](#94-fragments-the-client-cannot-render)), and a server MUST NOT
+send one.
 
 ### 9.2 The client owns its identifiers, in two separate namespaces
 
 A server MUST NOT return **node ids or callback ids**. These are not one
-mechanism and getting only the first right leaves fragment callbacks colliding
-with the screen's own.
+mechanism, and getting only the first right leaves fragment callbacks
+colliding with the screen's own.
 
-- **Node ids** are a hash of a **key path**. The region node is keyed with its
-  region name, so a fragment key `total` lands at `/sales-summary/total`. The
-  existing parent-to-child path derivation does this on its own; a fragment
-  needs no id arithmetic.
-- **Callback ids** are a hash of a **registry scope** plus an expression
-  string. A fragment's callbacks MUST register into their own scope
-  (`server:<region>`), pinned on the region node so the whole subtree inherits
-  it.
+- **Node ids** come from a **key path**. The client keys the region's own
+  node with the region name, so a fragment key `total` lands at
+  `/sales-summary/total`. A fragment needs no id arithmetic.
+- **Callback ids** belong to a **callback scope**. A fragment's callbacks
+  MUST register in a scope of their own, one per region, apart from the
+  screen's ([§10.4](#104-scopes)).
 
-A server sends relative keys and callback **slots** (§10.1), never ids. The
-client turns each slot into an expression and registers it. The server never
-needs to know how either id is computed.
+A server sends relative keys and callback **slots** ([§10.1](#101-callback-slots)), never ids. The
+client turns each slot into a callback of its own and registers it. The
+server never needs to know how either id is computed.
 
-Placeholder callbacks MUST stay in the screen's own scope. The placeholder is the
-client's markup, and a server-scoped id on it would silently fail to dispatch.
+Placeholder callbacks MUST stay in the screen's own scope. The placeholder is
+the client's UI, and a callback in a region's scope on it would fail to
+dispatch.
 
 ### 9.3 What a fragment may not contain
 
 A fragment describes a subtree inside a region. It is not a screen.
 
-- **No screen chrome.** `top_bar`, `bottom_nav`, `bottom_bar`, `fab` and the
-  root stack/tabs elements MUST be rejected. A region is a subtree; chrome belongs
-  to the screen that owns it. A server screen describes its chrome too, but
-  as its own checked part of the answer (§12.2), never inside a fragment.
-- **No nested `server_region`.** Regions are declared by the client, in client
-  markup. A server MUST NOT create one.
-- **No compiler-internal prop keys.** `props` is a free-form bag authored by a
-  server, and the collector's attribute vocabulary includes spellings that are
-  not presentational: `_press` selects which method a press dispatches,
-  `_navigate` moves the app, `native-key` sets identity. A server writing
-  `_press` into `props` would choose which **client** method runs and walk
-  straight around the `#[NativeAction]` rule in §10.
+- **Only types the client can render.** A fragment MUST use only core types
+  ([§9.7](#97-element-types)) and the types the client listed in `elements` at the handshake
+  ([§6.1](#61-handshake)). A server MUST NOT send any other, and a client MUST refuse a
+  fragment that does ([§9.4](#94-fragments-the-client-cannot-render)).
 
-  Keys beginning `_`, `native-` or `native:` MUST be stripped from `props` before
-  it reaches the collector. This is the fragment-side equivalent of the
-  hydration allowlist in §5.1, and for the same reason: the payload is
-  genuinely server-authored and the client MUST NOT let it reach into
-  machinery that isn't presentational.
-- **No local media.** A prop that loads a URL (`src` on any element,
-  `leadingAvatar` and `leadingImage` on `list_item`) MUST be an absolute
-  `https:` URL. See §9.6.
-- **No php-mode web view.** A `webview` with `php` set loads the app's own
-  routes. That is the app's to open, not a server's.
+  Two kinds of type are never in either set. A **chrome** type (a nav bar,
+  tab bar, bottom bar, side menu or floating action button) belongs to the
+  screen that owns the region, not to the region, so no core type is chrome
+  and a client MUST NOT advertise one. A server screen describes its chrome
+  too, but as its own checked part of the answer ([§12.2](#122-chrome)), never inside a
+  fragment. And a type that **declares a region** is never one either:
+  regions are declared by the client, in its own UI, and a server MUST NOT
+  create one.
+- **Props are presentational.** `props` is written by a server, so no prop
+  may choose a method to run, bind a callback, move the app, or set a node's
+  identity. Callbacks come only from slots ([§10.1](#101-callback-slots), [§12.4](#124-navigation)), and identity only
+  from `key`. Prop names that begin with `_`, `native-` or `native:` are
+  reserved. A server MUST NOT send one, and a client MUST drop it before it
+  reads `props`. A client MUST NOT let a prop reach anything that is not
+  presentational.
+- **No local media.** A prop that loads a URL MUST be an absolute `https:` URL,
+  or mean no image. See [§9.6](#96-media-urls).
+- **No local web view.** A fragment MUST NOT contain a web view that loads the
+  client's own local content. That is the app's to open, not a server's.
+  `webview` is not a core type. A client that advertises it MUST refuse a
+  `webview` node whose `src` is not a media URL under [§9.6](#96-media-urls), and one whose
+  `local` prop is present with any value other than `false` or `null`. It MUST
+  also refuse one with any other prop that would make it load the client's
+  own content.
 
 ### 9.4 Fragments the client cannot render
 
-A fragment may name an element type this build does not have: a plugin the app
-never installed, or a type from a newer client. The natural implementation
-throws mid-render and takes the whole screen down, which is the opposite of
-what §3 promises.
+A fragment may break [§9.3](#93-what-a-fragment-may-not-contain): a type the client did not advertise, a type from a
+newer protocol, a bad media URL, or nesting deeper than 64 levels ([§9.1](#91-node-shape)). The
+natural implementation fails mid-render and takes the whole screen down,
+which is the opposite of what [§3](#3-regions) promises.
 
-A fragment MUST therefore be **validated before it is stored**, not during render.
-One that fails validation MUST be rejected whole, and the region keeps its
-placeholder, exactly as if the request had failed.
+A fragment MUST therefore be **validated before it is stored**, not during
+render. One that fails validation MUST be rejected whole, and the region keeps
+its placeholder, exactly as if the request had failed with reason `invalid`
+([§10.2](#102-server-actions-the-default)).
 
-### 9.5 Server Blade
+### 9.5 Authoring
 
-A server may author a fragment in the same Blade dialect an app uses for its
-native screens. This is a server convenience. The wire format does not
-change: the server compiles and renders the view itself, turns it into a
-§9.1 tree, and validates it under §9.3 exactly as it would a tree built in
-code. Blade never crosses the wire, and a client cannot tell the two apart.
-
-The reference server accepts a view anywhere it accepts a tree: a region
-method's return value, a server screen's body (§12.1), and the chrome
-content slots `bottom_bar` and `tab_accessory` (§12.2).
-
-**Tags.** `<native:x-y>` always becomes a node of type `x_y`. The bare
-`<x-y>` does too when `x_y` is a known type: the server keeps a list of
-core and first-party UI element types, plus any it adds. The list includes
-chrome types such as `top_bar`, so a bare `<top-bar>` compiles to a node
-and is then refused by §9.3, rather than vanishing as markup. An unknown
-hyphenated bare tag is a compile error in debug and is reported and left
-out otherwise. Other markup is dropped. Several root tags make a list
-fragment.
-
-**Attributes.**
-
-| Blade | Fragment |
-| --- | --- |
-| `class="..."`, `:class="[...]"` | `class`, passed through as written (Tailwind is resolved on the device) |
-| `key="..."`, `:key="$id"`, `native:key="..."` | `key` |
-| `@press="m(args)"` | `on_press: {call: "m", args: [...]}` (server) |
-| `@press.client="m(args)"` | `on_press: {call: "m", args: [...], target: "client"}` |
-| `@navigate="/path/{{ $id }}"` | `on_press: {navigate: "/path/7"}` |
-| `@navigate.replace.fade="/path"` | `on_press: {navigate: "/path", replace: true, transition: "fade"}` |
-| `@navigate.back`, `@navigate.back.fade` | `on_press: {back: true}`, with `transition` when given |
-| any other `name="..."` / `:name="expr"` | `props.name`, under the name as written |
-
-`<text>` and `<button>` slots become `props.text` and `props.label`, with
-entities decoded and whitespace collapsed the way the device collapses it.
-A `<text>` holding nested `<text>` runs becomes a `text` node with `text`
-children.
-
-**The `.client` rule.** In server Blade an event names a server `#[Action]`
-by default, because the server owns the fragment (§10). `.client` is the
-only way to target the device, and it maps to `"target": "client"`, so the
-device still applies every check in §10.3. The same rule covers `@press`,
-`@longPress`, `@doubleTap`, `@change` and `@submit` (and the `@tap` /
-`@longTap` spellings). Any other event has no slot and is a compile error,
-not a silently dropped handler.
-
-**Args.** Call arguments are parsed when the view compiles, not at render
-time. Each must be a literal (quoted string without interpolation, number,
-`true`, `false`, `null`, or a `[...]` array of those) or one whole
-`{{ $expr }}`, which is evaluated and sent as a JSON value. `{{ }}` inside a
-quoted string is refused, so data can never add or reshape arguments. The
-result is then checked against §10.1 like any other callback.
-
-**`@navigate`.** It fills the `on_press` slot with a navigation (§12.4).
-
-- The value is a path, not a PHP expression. `{{ }}` is interpolated into
-  it as text, so the result is always a string, and the server checks it is
-  an app path when the node is built and again under §12.4.
-- Modifiers are the device's own: `replace`, `back`, and one transition in
-  camelCase (`fade`, `slideFromRight`, `slideFromLeft`, `slideFromBottom`,
-  `fadeFromBottom`, `scaleFromCenter`, `parallaxPush`, `morph`, `none`),
-  which maps to the snake_case value in §12.4.
-- `.back` takes no path and cannot be combined with `.replace`.
-- Compile errors: `.exitToWeb`, since §12.4 has no way to leave the app; any
-  other modifier; more than one transition; a value that does not start
-  with `/` or `{{`; and the device's `@navigate('/x', [...])` form, whose
-  data the slot has no room for.
-- `@navigate` and `@press` (or `@tap`, or `.client` forms) on one element
-  are a compile error. On the device `@navigate` wins and the press is
-  ignored without a word. In a fragment a press does one thing, so the
-  server refuses rather than drop a handler. Long press and double tap are
-  separate slots and combine freely with `@navigate`.
-
-**Not supported.** `native:model`, `@model` and `native:poll` are compile
-errors. A fragment has no client props to sync and re-renders by push.
-
-**Isolation.** A server must compile region views apart from its web views
-(separate compiler and cache), so bare tags like `<button>` in ordinary web
-pages are never rewritten.
+How a server produces a fragment is up to it, and the wire is the same either
+way.
 
 ### 9.6 Media URLs
 
-In an app's own view, `src="img/x.png"` is an asset the app shipped in
-`public/`, and `src="/var/..."` is a file on the device. From a server
-neither means what its author meant, and a server should not be able to
-point at the app's files at all.
+In an app's own UI, a relative path can mean an asset the app shipped, and an
+absolute path can mean a file on the device. From a server neither means what
+its author meant, and a server should not be able to point at the app's
+files at all.
 
 So in a fragment, and in chrome (`nav_bar.logo.src`, an action's `image`),
 every media URL MUST be absolute:
 
-- The client accepts `https:` URLs with a host, or an empty string for no
-  image. With `app.debug` on it MAY also accept `http:`, for a server on a
-  developer's machine. Anything else (relative paths, `/` paths, `//host`,
-  `file:`, `content:`, `data:`, `javascript:`) MUST fail §9.4, and the whole
-  fragment is rejected. The check is on the prop name: `src` on any type,
-  so a plugin element that loads one is covered, plus `leadingAvatar` and
-  `leadingImage`.
-- The server MUST turn what its author wrote into that form before it sends
-  it. The reference server resolves `img/x.png`, `./img/x.png` and
-  `/img/x.png` against its own URL (`asset()`, or `asgard.media_url`),
-  gives `//host/x` the request's scheme, passes `http:` and `https:`
-  through, and refuses every other scheme. It refuses `data:` too: support
-  for it differs between platforms, and a fragment is re-sent on every
-  push, so an inline image costs every redraw instead of being cached once.
+- The client accepts `https:` URLs with a host. A client MAY also accept
+  `http:` URLs in a development build, for a server on a developer's machine.
+  A production build MUST NOT.
+- On a node, `null`, `""` and an absent prop all mean no image. In chrome,
+  an empty `src` or `image` is refused: leave the member out instead.
+- Anything else (relative paths, `/` paths, `//host`, `file:`, `content:`,
+  `data:`, `javascript:`) MUST fail [§9.4](#94-fragments-the-client-cannot-render), and the whole fragment is rejected.
+  The check is on the prop name: `src` on any type, so an advertised type
+  that loads one is covered, plus `leadingAvatar` and `leadingImage` on any
+  type. Those two apply when a fragment uses the well-known `list_item` type
+  ([§9.7](#97-element-types)) that a client has advertised.
+- A media URL MUST be at most 2048 bytes, with no whitespace or control
+  characters.
 
-App-authored views are not affected. They resolve `src` as they always have.
+The server MUST turn what its author wrote into that form before it sends it.
+It SHOULD resolve a relative path against its own public URL, and MUST NOT
+send `data:` URLs: support for them differs between platforms, and a
+fragment is re-sent on every push, so an inline image costs every redraw
+instead of being cached once.
+
+The client's own UI is not affected. It resolves its own media as it always
+has.
 
 **Media is public.** The device loads these URLs itself, with no Asgard
 session and none of the user's auth. Anything private needs a URL that
-carries its own permission: a signed route
-(`URL::temporarySignedRoute()`) or a storage disk's `temporaryUrl()`.
+carries its own permission, such as a signed URL that expires.
+
+### 9.7 Element types
+
+Every client MUST render the **core** types below. A client lists any others
+it can render in `elements` at the handshake ([§6.1](#61-handshake)), and a fragment MUST NOT
+use a type outside the two sets ([§9.3](#93-what-a-fragment-may-not-contain)). This document does not define the
+props of an advertised type. Client and server agree on those themselves,
+apart from the well-known types at the end of this section.
+
+The core types are `column`, `row`, `stack`, `scroll_view`, `text`, `button`,
+`image`, `spacer` and `divider`.
+
+#### Common to every node
+
+Every node may carry `key`, `class` and callback slots ([§9.1](#91-node-shape)). No core type
+has a value, so `on_change` and `on_submit` only apply to advertised types
+that do.
+
+`class` is a space-separated list of style utility names: padding, margin,
+gap, size, alignment, background, border, corner radius, opacity, and the
+like. The vocabulary is that of [Tailwind CSS](https://tailwindcss.com/docs), including the
+`dark:` variant and the `ios:` and `android:` platform variants. The client
+resolves the names for its own platform, and MUST ignore a name it does not
+support. Layout and decoration come from `class`, not from props.
+
+Every type accepts these props:
+
+| Prop | Type | Meaning |
+|---|---|---|
+| `a11yLabel` | string | What a screen reader announces for the node. |
+| `a11yHint` | string | A screen reader hint for what the node does. |
+
+Values in the tables below:
+
+- A **colour** is a string, `#RRGGBB`, or `#AARRGGBB` with alpha first.
+- A **size** is a number in points (iOS) or density-independent pixels
+  (Android).
+
+A client MUST ignore a prop a type does not define, as [§5.3](#53-compatibility) says, and MUST
+treat a prop whose value has the wrong type as absent.
+
+#### `column`
+
+Lays its children out top to bottom. No props of its own.
+
+#### `row`
+
+Lays its children out side by side, in the reading direction. No props of its
+own.
+
+#### `stack`
+
+Layers its children on top of each other, the first at the back. No props of
+its own.
+
+#### `scroll_view`
+
+Scrolls its children when they do not fit.
+
+| Prop | Type | Meaning |
+|---|---|---|
+| `axis` | string | `vertical` (the default), `horizontal` or `both`. |
+| `showsIndicators` | boolean | Whether scroll indicators show. Default true. |
+
+#### `text`
+
+A run of text. Its children, if any, MUST be `text` nodes, which become
+inline runs inside it with their own styling.
+
+| Prop | Type | Meaning |
+|---|---|---|
+| `text` | string | The text. |
+| `color` | colour | Text colour. |
+| `fontSize` | size | Font size. |
+| `fontWeight` | integer | 1 thin, 2 light, 3 regular, 4 medium, 5 semibold, 6 bold, 7 heaviest. A client clamps other values into that range. |
+| `textAlign` | string | `left`, `center` or `right`. |
+| `maxLines` | integer | Truncate after this many lines. |
+
+#### `button`
+
+A tappable button with a text label. Its action is its `on_press` slot.
+
+| Prop | Type | Meaning |
+|---|---|---|
+| `label` | string | The label. |
+| `disabled` | boolean | Shown disabled, and taps do nothing. Default false. |
+| `labelColor` | colour | Label colour. |
+| `fontSize` | size | Label font size. |
+
+#### `image`
+
+An image loaded from a URL.
+
+| Prop | Type | Meaning |
+|---|---|---|
+| `src` | media URL | The image ([§9.6](#96-media-urls)). |
+| `fit` | string | `contain` (the default), `cover`, `fill` or `none`. |
+| `tintColor` | colour | Draws the image's opaque pixels in this colour. |
+| `alt` | string | What a screen reader announces. An image without one is decorative and hidden from screen readers. |
+
+#### `spacer`
+
+Takes up the remaining space along its parent's main axis. No props of its
+own.
+
+#### `divider`
+
+A thin line across its parent, to separate content. No props of its own. Its
+colour and thickness come from `class`.
+
+#### Well-known extension types
+
+These types are not core. A client renders one only if it lists it in
+`elements`. They are described here so that clients and servers that use
+them agree on what they mean.
+
+`list_item` is one row of a list, in the platform's own style: an optional
+leading visual, one to three lines of text, and optional trailing text.
+
+| Prop | Type | Meaning |
+|---|---|---|
+| `headline` | string | The main line. |
+| `supporting` | string | A secondary line below it. |
+| `overline` | string | A small line above it. |
+| `leadingAvatar` | media URL | A round image before the text ([§9.6](#96-media-urls)). |
+| `leadingImage` | media URL | A square image before the text ([§9.6](#96-media-urls)). |
+| `leadingMonogram` | string | One or two letters in a circle before the text. |
+| `trailingText` | string | Short text at the end of the row. |
+| `disabled` | boolean | Shown disabled, and taps do nothing. Default false. |
+
+When more than one leading prop is set, the client shows one of them.
 
 ## 10. Events
 
@@ -1135,162 +1262,157 @@ The slots are `on_press`, `on_long_press`, `on_double_tap`, `on_change` and
 `on_submit`. Each MUST hold an object, never a string:
 
 ```json
-"on_press": {"call": "shuffle", "args": [3]}
-"on_press": {"call": "celebrate", "args": [], "target": "client"}
+{"on_press": {"call": "shuffle", "args": [3]}}
+{"on_press": {"call": "celebrate", "args": [], "target": "client"}}
 ```
 
 - `call` MUST be a method name matching `^[A-Za-z_][A-Za-z0-9_]{0,99}$`.
 - `args` MUST be a list of at most 16 JSON values (null, booleans, numbers,
   strings, and lists or objects of those), nested at most 4 deep.
-- `target` MUST be absent, `"server"` or `"client"`. A slot MUST NOT have other keys.
+- `target` MUST be absent, `"server"` or `"client"`.
+- A slot MUST NOT have other members ([§5.3](#53-compatibility)).
 
-A slot may instead move the app (§12.4):
+A slot may instead move the app ([§12.4](#124-navigation)):
 
 ```json
-"on_press": {"navigate": "/promos/42", "replace": true, "transition": "fade"}
-"on_press": {"back": true}
+{"on_press": {"navigate": "/promos/42", "replace": true, "transition": "fade"}}
+{"on_press": {"back": true}}
 ```
 
 A server MUST always send `args`, even when empty. A client MUST treat a missing
 `args` as empty. For `on_change` and `on_submit`, the control's value MUST be
-appended to `args` on either target, the way client callbacks already work.
+appended to `args` on either target.
 
 The object is structured on purpose. Neither side parses a call expression out
 of a string, so there is no expression language to get wrong.
 
-A slot of any other shape MUST be dropped, and the node renders without that
-handler. A client in debug mode MAY throw instead, so the mistake shows up while
-the server is being written.
+A client MUST refuse a slot of any other shape, including one with a member it
+does not know. It drops the slot, logs why, and the node renders without that
+handler.
 
 ### 10.2 Server actions (the default)
 
-On a tap, the client sends the usual region request (§5.1) plus an `action`
+On a tap, the client sends the usual region request ([§3.1](#31-when-the-client-asks)) plus an `action`
 member, to the same endpoint:
 
 ```json
 {"protocol": 1, "component": "app.native.screens.home", "region": "stats",
- "state": {...}, "platform": "ios",
+ "state": {"period": "week"}, "platform": "ios",
  "action": {"call": "shuffle", "args": [3]}}
 ```
 
-The server hydrates the component as for a render, runs the action, renders
-the region and answers with an ordinary fragment response. The client applies
-it the same way it applies a render.
+The `action` object follows the rules of a slot: `call`, `args`, and no other
+members.
 
-A server MUST run `call` only when all of these hold. Otherwise it MUST answer
-`404 unknown_action`.
+The server restores the component from the state as for a render, runs the
+action, renders the region and answers with an ordinary fragment response.
+The client applies it the same way it applies a render.
 
-- The method is public, not static, not magic, and declared on the app's own
-  component class rather than on the package's base class.
-- It carries `#[Action]`. A public method without it is not callable, which
-  is the same rule `#[Region]` applies to rendering.
-- It is not a `#[Region]` method.
-- Its parameters are all scalar or array typed and taken by value. Arguments
-  are passed positionally. There is no container injection and no implicit
-  model or enum binding, so a client cannot make the server load a record by
-  sending its id where a model was expected.
+A server MUST run `call` only when the server component has explicitly
+exposed a method of that name as an action. Otherwise it MUST answer
+`404 unknown_action`. In particular:
 
-An argument the method's types refuse MUST be a `422`, not a `500`. Everything in
-`args` is untrusted input in the same sense as client state (§5.1): an action
-MUST authorise against the bearer identity (§7.5), never against what it was sent.
+- Nothing is callable by default. Being public, or existing, is not enough.
+- A method that renders a region is not an action unless it is also exposed
+  as one.
+- Nothing the server's own framework provides is an action.
+- Arguments are plain JSON values, passed in order. The server MUST NOT turn
+  an argument into a record or object by looking it up, so a client cannot
+  make the server load a record by sending its id where an object was
+  expected.
 
-An action is stateless. Changes it makes to public properties last for that
-request only and MUST NOT be sent back as client state. A server that needs to
-remember something across taps stores it itself.
+An argument the method cannot take MUST be a `422`, not a `500`. Everything in
+`args` is untrusted input in the same sense as client state ([§5.1](#51-client-state)): an action
+MUST authorise against the bearer identity ([§7.5](#75-authentication-is-separate)), never against what it was
+sent.
+
+An action is stateless. Changes it makes to the component's state last for
+that request only and MUST NOT be sent back as client state. A server that
+needs to remember something across taps stores it itself.
 
 #### Redrawing other regions
 
-An action, or a `#[Server]` method (§10.5), can say which other regions need
-drawing again, with `$this->refresh()`. There are three cases.
+An action, or a method call ([§10.5](#105-method-calls)), can say which other regions need drawing
+again. There are three cases.
 
-**Same component, inline.** `$this->refresh('stats')`, with one or more
-region names of the same component. The server already has the component
-hydrated with the request's state, so after the method runs it renders
-those regions too, as the request's user, and puts them in the same answer.
-An action's own region MUST always be answered as before, and MUST be left out of
-`fragments` if the action names it as well.
+**Same component, inline.** The method names one or more regions of the same
+component. The server already has the component restored from the request's
+state, so after the method runs it renders those regions too, as the
+request's user, and puts them in the same answer. An action's own region MUST
+always be answered as before, and MUST be left out of `fragments` if the
+action names it as well.
 
 ```json
-{"protocol":1,"region":"greeting","version":"…","fragment":{…},
- "fragments":{"stats":{"version":"q3V0bG9yZW1pcHN1","fragment":{…}}}}
+{"protocol":1,"region":"greeting","version":"bG9yZW1pcHN1cTNW",
+ "fragment":{"type":"text","props":{"text":"Hi"}},
+ "fragments":{"stats":{"version":"q3V0bG9yZW1pcHN1",
+  "fragment":{"type":"text","props":{"text":"42"}}}}}
 ```
 
-Each part is shaped like a batch part (§3.1). Its token MUST be read after the
+Each part is shaped like a batch part ([§3.1](#31-when-the-client-asks)). Its token MUST be read after the
 method runs and before anything renders. The device MUST paint a part only on
 the instance that sent the request, and only when that instance drew the
 region. It MUST skip a region with a request that went out after this one,
 because that answer is newer. A painted part supersedes any older request
 for its region still in flight. Each part MUST be checked as a region render is
-(§9.4), and one that is refused fires nothing. A name that is not a region
-of the component throws on the server, which answers `500`.
+([§9.4](#94-fragments-the-client-cannot-render)), and one that is refused is not surfaced as a failure. A name that is
+not a region of the component is a server error, and the server answers `500`.
 
-**Other components on this phone, a hint.** `$this->refresh(InboxScreen::class,
-'unread')`, with a class or an address and at most one region. Leaving the
-region out means all of them. The server does not have that component's
-state, so it does not render it. It only names it, after checking the address
-and region exist as `Asgard::push()` does:
+**Other components on this phone, a hint.** The method names another
+component's address and at most one of its regions. Leaving the region out
+means all of them. The server does not have that component's state, so it
+does not render it. It only names it, after checking the address and region
+exist:
 
 ```json
-{"protocol":1,"region":"greeting","fragment":{…},
+{"protocol":1,"region":"greeting","version":"bG9yZW1pcHN1cTNW",
+ "fragment":{"type":"text","props":{"text":"Hi"}},
  "refresh":[{"component":"app.native.screens.inbox","region":"unread"}]}
 ```
 
-A class registered under several addresses gives one hint per address. A
-hint for a whole component covers hints for its regions, and an answer
+A hint for a whole component covers hints for its regions, and an answer
 MUST carry at most 16 hints and 16 inline regions.
 
-On the device a hint is handled like a stream signal (§8.1): every live
+On the device a hint is handled like a stream signal ([§8.1](#81-the-push-stream)): every live
 instance at that address that drew the region is marked, and fetches it with
 its own current state after its next frame. An instance on a covered screen
 fetches when that screen is drawn again. A hint for a region nobody drew, or
 for a screen that has closed, does nothing.
 
-**Other phones.** `Asgard::push()` and `Asgard::to()` (§8.1), as before.
-`refresh()` only reaches the phone that sent the request.
+**Other phones.** The server pushes ([§8.1](#81-the-push-stream)). A hint only reaches the phone that
+sent the request.
 
 `fragments` and `refresh` MUST be present only when the method asked for them.
 An answer that carries inline regions MUST NOT be compressed unless its own region
-and all of them allow it (§7.4).
+and all of them allow it ([§7.4](#74-encryption)).
 
 #### Timeouts and failures
 
-The client waits at most its action timeout for the answer: 15 seconds by
-default, from `nativephp.asgard.action_timeout`. A component that uses
-`UsesServer` can override `serverActionTimeout()` to set its own. One without
-the trait uses the config value. 0 means no limit. The same applies to a chrome
-action (§12.2) and to a `#[Server]` method call. The transport's own HTTP
-timeout is set longer, so this is the one that fires and a slow server reads
-as `timeout` rather than `network`.
+The client waits at most its action timeout for the answer. 15 seconds is
+RECOMMENDED as the default, and a client MAY let the app set its own per
+component, with 0 meaning no limit. The same applies to a chrome action
+([§12.2](#122-chrome)) and to a method call ([§10.5](#105-method-calls)). A client SHOULD set the HTTP timeout of
+its transport longer, so this is the one that fires and a slow server reads as
+`timeout` rather than `network`.
 
-An action fails when the timeout passes, or at once on a hard failure. The
-transport reports one with `ServerRegion::failed($request, $reason, $status)`:
+An action fails when the timeout passes, or at once on a hard failure:
 
 | reason    | when                                                                       |
 |-----------|----------------------------------------------------------------------------|
 | `timeout` | no answer in time                                                          |
 | `network` | the request never reached the server, or nothing came back                |
 | `server`  | the server answered with an error, including a 419 after its one retry    |
-| `invalid` | the answer failed verification, or its fragment cannot be rendered (§9.4) |
+| `invalid` | the answer failed verification, or its fragment cannot be rendered ([§9.4](#94-fragments-the-client-cannot-render)) |
 
-A failed action fires `Native\Mobile\Events\Asgard\ServerActionFailed` on
-the screen it was sent from: the owner, or the screen a child component that
-sent it is on. Its public properties are `action` (the call), `component`
-(the address), `region`, `reason`, `status` (the HTTP status, or null),
-`requestId` and `message`. The screen hears it with `#[On]`, filters included,
-and draws a frame after; listeners anywhere in the app hear it with
-`Event::listen`:
+The client MUST surface a failed action to the app, on the screen it was sent
+from, with the action's `call`, the component's address, the region, the
+reason, the HTTP status when there was one, and a message for logs.
 
-```php
-#[On(ServerActionFailed::class, when: ['action' => 'like'])]
-public function likeFailed(string $reason): void {}
-```
-
-The region MUST keep what it had. An answer that lands after the failure MUST be
-dropped. A failure for an action that a newer request for the same region
-has superseded fires nothing, since its answer would have been dropped
-anyway. Timers are acted on by the runloop of the screen the component is
-on, which wakes for the deadline with no input needed. A covered screen's
-timers wait until it is on top again.
+The region MUST keep what it had. An answer that lands after the failure MUST
+be dropped. A failure for an action that a newer request for the same region
+has superseded is not surfaced, since its answer would have been dropped
+anyway. A client MUST act on a deadline when it passes, without waiting for
+user input. A covered screen's timers wait until it is on top again.
 
 ### 10.3 Client actions
 
@@ -1301,71 +1423,67 @@ screen around the region without a round trip.
 The server names the method, but the app decides whether it may. The device
 MUST run `call` only when:
 
-- the method is on the component that owns the region;
-- it carries `#[NativeAction]`;
-- it passes the same guard as any other UI interaction: public, not static,
-  not a lifecycle hook, not declared on `NativeComponent`;
-- its parameters are scalar or array typed and taken by value, with no
-  injection or binding, as in §10.2.
+- the method belongs to the component that owns the region;
+- the app has explicitly exposed that method to servers;
+- it is not part of the client's own machinery: lifecycle hooks, navigation,
+  events, state sync, region refresh, and the like;
+- it takes plain JSON values, in order, with nothing looked up from them,
+  as in [§10.2](#102-server-actions-the-default).
 
 If any of these fail, nothing runs and the device logs it. It **MUST NOT** fall
 back to sending the call to the server. A misspelt client action that quietly
 became a server call would change where code runs without anyone noticing.
 
-Framework callbacks are out of reach. A fragment cannot name `navigate`,
-`emit`, `__syncProperty` or any other `NativeComponent` method, and §9.3
-already strips the attribute spellings that would bind them. The one way a
-fragment moves the app is the navigation slot in §12.4, which the device
-checks against its own routes.
+The client's own machinery is out of reach. A fragment cannot name a method
+the client uses to navigate, raise events or sync state, and [§9.3](#93-what-a-fragment-may-not-contain) keeps props
+from binding one. The one way a fragment moves the app is the navigation slot
+in [§12.4](#124-navigation), which the device checks against its own routes.
 
 **What this leaves a hostile server.** It can only trigger what the app chose
-to expose with `#[NativeAction]`, and it could already draw a button the user
-would tap. It does choose the label. A button reading "Cancel" can call
-whatever `#[NativeAction]` method the server likes. Keep destructive methods
-off `#[NativeAction]`, or have them confirm with the user themselves.
+to expose to servers, and it could already draw a button the user would tap.
+It does choose the label. A button reading "Cancel" can call whatever exposed
+method the server likes. Keep destructive methods unexposed, or have them
+confirm with the user themselves.
 
 ### 10.4 Scopes
 
-Fragment callbacks register in the region's own registry scope
-(`server:<region>`, §9.2). The scope MUST store the target with the call, so a
-server callback can never be dispatched as a client one, and a fragment cannot
-reach the screen's callbacks or another region's.
+Fragment callbacks register in the region's own callback scope ([§9.2](#92-the-client-owns-its-identifiers-in-two-separate-namespaces)). The
+scope MUST store the target with the call, so a server callback can never be
+dispatched as a client one, and a fragment cannot reach the screen's callbacks
+or another region's.
 
-Callback ids are short hashes, so a hostile server could search for an
-expression whose id matches one of the screen's own. A client therefore MUST drop
-any id claimed by more than one scope, and logs it, rather than run either
+If a client's callback ids are short hashes, a hostile server could search for
+a callback whose id matches one of the screen's own. Such a client MUST drop
+any id claimed by more than one scope, and log it, rather than run either
 handler. The worst a server can do this way is disable one button.
 
 A fragment's callbacks go when the fragment is replaced or cleared. A tap that
 arrives for a fragment that is no longer current MUST do nothing.
 
-**Inherited wrinkle.** Child components mount during render and own their
-callbacks in per-child registries. A region inside a child component belongs
-to that child, and its client actions run on the child. Its scope is the
-child's scope followed by `server:<region>`, so two sibling cards showing the
-same fragment never share callback ids.
+A region inside a nested component belongs to that component, and its client
+actions run there. Its scope sits inside that component's scope, so two
+sibling cards showing the same fragment never share callback ids.
 
-### 10.5 `#[Server]` method calls
+### 10.5 Method calls
 
-A `#[Server]` method is a method call rather than
-a tap in a fragment. The component that declares one must use `UsesServer`
-in the reference client. It goes to its own endpoint, `{prefix}/call`, in the same
-two forms as render (§8), signed and encrypted like everything else and with a
-nonce (§7.3):
+A method call runs a method on the server component that the app's own code
+calls directly, rather than a tap in a fragment. It goes to its own endpoint,
+`{base}/call`, signed and encrypted like everything else and with a nonce
+([§7.3](#73-signatures)):
 
 ```json
 {"protocol": 1, "component": "app.native.screens.home", "method": "roll",
- "args": [], "state": {...}, "platform": "ios"}
+ "args": [], "state": {"roll": 0}, "platform": "ios"}
 ```
 
 Its own endpoint rather than render with another member, because nothing
 about it is a region: there is no region to name, and the answer is a
-different shape. Folding it into render would have made every
-render check carry a "unless this is a call" branch.
+different shape. Folding it into render would have made every render check
+carry a "unless this is a call" branch.
 
-The server hydrates the component as for a render, runs the method of that
-name, and answers with only the public props whose `serialize()` value
-differs from what hydration left (a prop the method filled in counts):
+The server restores the component from the state as for a render, runs the
+method of that name, and answers with `delta`: the state members whose values
+the method changed. A member the method set for the first time counts.
 
 ```json
 {"protocol": 1, "delta": {"roll": 4}}
@@ -1374,49 +1492,46 @@ differs from what hydration left (a prop the method filled in counts):
 `delta` MUST always be an object. Each value MUST be a plain JSON value, or the
 answer is `500 invalid_delta`.
 
-A method that called `$this->refresh()` (§10.2) also gets `fragments`, the
-regions of this component it named, rendered after the delta is worked out,
-and `refresh`, the hints for other components:
+A method that asked for other regions to be drawn again ([§10.2](#102-server-actions-the-default)) also gets
+`fragments`, the regions of this component it named, rendered after the delta
+is worked out, and `refresh`, the hints for other components:
 
 ```json
 {"protocol": 1, "delta": {"roll": 4},
- "fragments": {"stats": {"version": "q3V0bG9yZW1pcHN1", "fragment": {…}}}}
+ "fragments": {"stats": {"version": "q3V0bG9yZW1pcHN1",
+  "fragment": {"type": "text", "props": {"text": "4"}}}}}
 ```
 
 The device MUST apply the delta first, then paint the regions on the calling
-instance under the rules of §10.2, then handle the hints, then run the
-closure. A call answer MUST NOT be compressed, fragments or not, since the
-delta can mix the server's values with text the device chose (§7.4). A `#[Locked]` prop the method changed is in it:
-locking stops the client writing a prop, not the server. The client MUST apply
-each prop under compare-and-set: only if it still holds the value it was sent with.
+instance under the rules of [§10.2](#102-server-actions-the-default), then handle the hints, and only then hand
+the result to the app code that made the call. A call answer MUST NOT be
+compressed, fragments or not, since the delta can mix the server's values with
+text the device chose ([§7.4](#74-encryption)).
 
-A server MUST run `method` only under the rules of §10.2, with `#[Server]` in
-place of `#[Action]`. The two are separate allowlists, so an `#[Action]` is
-not callable as a call and the other way round. Otherwise it answers
-`404 unknown_method`. An unknown address is `404 unknown_component`, and a
-malformed body, an unknown member, or state or args that do not fit their
-types is `422 invalid_request`.
+The delta may change state members the app does not let its own UI write.
+That restriction binds the client's UI, not the server. The client MUST apply
+each member under compare-and-set: only if it still holds the value it was
+sent with.
 
-Failures and timeouts are as in §10.2, with `region` null on the event.
+A server MUST run `method` only under the rules of [§10.2](#102-server-actions-the-default), with "exposed for
+calls" in place of "exposed as an action". The two are separate lists, so an
+action is not callable as a method call and the other way round. Otherwise it
+answers `404 unknown_method`. An unknown address is `404 unknown_component`.
+A malformed body, a member it does not know ([§5.3](#53-compatibility)), or state or args that do
+not fit is `422 invalid_request`.
+
+Failures and timeouts are as in [§10.2](#102-server-actions-the-default), with no region.
 
 ### 10.6 Uploads
 
-A component that uses `UsesServer` can send a file to the server:
-
-```php
-$this->uploadToServer('savePhoto', $this->photo);
-$this->uploadToServer('savePhoto', $this->photo, 'A caption');
-```
-
-The server half is an `#[Upload]` method whose first parameter takes an
-`Illuminate\Http\UploadedFile`. The rest are args, checked as an action's
-are. `#[Upload]` is its own allowlist, apart from `#[Action]` and `#[Server]`.
-There is no method of that name on the device, no client body and no closure.
+The app can send a file to a method on the server component. The server
+method is exposed for uploads, a list of its own, apart from actions and
+method calls. It receives the file, then the args, which are checked as an
+action's are. There is no matching method on the device and no client body.
 The request carries the component's state as it is when the upload starts.
 
-It goes to `{prefix}/upload`, in the same two forms as render (§8), signed
-and encrypted like everything else and with a nonce (§7.3). The decrypted
-body is a frame rather than JSON:
+It goes to `{base}/upload`, signed and encrypted like everything else and with
+a nonce ([§7.3](#73-signatures)). The decrypted body is a frame rather than JSON:
 
 ```
 uint32, big-endian   N, the length of the header, at most 1 MiB
@@ -1426,25 +1541,26 @@ the rest             the file, exactly `size` bytes
 
 ```json
 {"protocol": 1, "component": "app.native.screens.home", "method": "savePhoto",
- "args": [], "state": {...}, "platform": "ios",
+ "args": [], "state": {"caption": ""}, "platform": "ios",
  "filename": "IMG_0001.jpg", "mime": "image/jpeg", "size": 2483113}
 ```
 
 A frame rather than JSON with the file in base64, because base64 makes every
 upload a third bigger and has to be decoded in memory on the server too. The
-header is JSON, so the rules for args and state are a call's. `Content-Type`
-on the wire stays `application/json`, as the signature in §7.3 covers it and
+header is a method call's body plus `filename`, `mime` and `size`, so the
+rules for args, state and unknown members ([§5.3](#53-compatibility)) are a call's. `Content-Type`
+on the wire stays `application/json`, as the signature in [§7.3](#73-signatures) covers it and
 the body is opaque until it is decrypted. Requests are never compressed
-(§7.4), and files are usually compressed already.
+([§7.4](#74-encryption)), and files are usually compressed already.
 
 `filename` and `mime` are what the device says, and the server MUST NOT trust
-either. It MUST sniff the type from the bytes and check it against the
-attribute's `mimes`, MUST write the bytes to a temp file it names itself, and
-keeps the filename, cleaned, only as the UploadedFile's original name. The
-temp file is deleted when the method returns.
+either. It MUST sniff the type from the bytes and check it against the types
+the method accepts. It MUST write the bytes to a temporary file it names
+itself, and keep the filename, cleaned, only as the file's original name. It
+deletes the temporary file when the method returns.
 
-The answer is a call's (§10.5): `{"protocol": 1, "delta": {...}}`, plus
-`fragments` and `refresh` when the method called `refresh()`. The device
+The answer is a call's ([§10.5](#105-method-calls)): `{"protocol": 1, "delta": {...}}`, plus
+`fragments` and `refresh` when the method asked for them. The device
 handles it exactly as it does a call's: the delta under compare-and-set,
 then the regions, then the hints.
 
@@ -1452,34 +1568,30 @@ Errors are a call's, plus:
 
 | Status | Body | When |
 |---|---|---|
-| 413 | `{"error":"too_large"}` | Over the method's `maxSize` or the server's `asgard.uploads.max_size`. When the server can tell from the size alone, it refuses before decrypting, and that 413 is plain and unsigned. |
-| 415 | `{"error":"unsupported_type"}` | The sniffed type is not in `mimes`. |
-| 404 | `{"error":"unknown_method"}` | Not an `#[Upload]` method, or the args do not fit. |
-| 422 | `{"error":"invalid_request"}` | A bad frame, a `size` that is not the bytes sent, or an empty file. |
+| 413 | `{"error":"too_large"}` | Over the method's limit or the server's. When the server can tell from the size alone, it refuses before decrypting, and that 413 is plain and unsigned ([§7.3](#73-signatures)). |
+| 415 | `{"error":"unsupported_type"}` | The sniffed type is not one the method accepts. |
+| 404 | `{"error":"unknown_method"}` | Not a method exposed for uploads, or the args do not fit. |
+| 422 | `{"error":"invalid_request"}` | A bad frame, a `size` that is not the bytes sent, an empty file, or a header member the server does not know. |
 
-Failures fire `ServerActionFailed` with `action` set to the method name and
-`region` null, as for a call. Two reasons are only for uploads, and both mean
-nothing was sent:
+Failures are surfaced as for a call, with the method name as the action and
+no region. Two reasons are only for uploads, and both mean nothing was sent:
 
-- `unreadable`: the path is not a readable regular file. A directory, a
-  symlink, a stream wrapper (`php://`, `phar://`, a URL) and a path with a NUL
-  byte MUST all be refused.
-- `too_large`: the file is over `nativephp.asgard.upload_max`, 20 MB by
-  default.
+- `unreadable`: the file the app named cannot be read as a regular file. A
+  directory, a symbolic link, anything that is not a local file, and a path
+  with a NUL byte MUST all be refused.
+- `too_large`: the file is over the client's own limit. 20 MB is
+  RECOMMENDED.
 
 A file the server finds too big or the wrong type is `server`, with status 413
 or 415.
 
-An upload waits `nativephp.asgard.upload_timeout` for its answer, 120 seconds
-by default, rather than the action timeout, since 20 MB on a mobile network
-can take a while. A component can override `serverUploadTimeout()`. midgard's
-HTTP timeout for uploads (`midgard.asgard.upload_timeout`, 150 seconds) is
-longer again, so the device's timer fires first.
+An upload waits for its answer longer than an action does, since 20 MB on a
+mobile network can take a while. 120 seconds is RECOMMENDED, with the HTTP
+timeout of the transport longer again, so the client's own timer fires first.
 
-The transport reads the file on its own lane and holds all of it in memory to
-seal it, since §7.4 encrypts the body as one piece. That is why the device
-has a cap. Streaming the file through native code, record by record, is
-future work.
+A client holds the whole file in memory to seal it, since [§7.4](#74-encryption) encrypts the
+body as one piece. That is why it has a cap. Streaming a file record by
+record is future work.
 
 ## 11. Versioning
 
@@ -1497,160 +1609,140 @@ route.
 
 ### 12.1 Screens
 
-On the server a screen is a class with a route:
+A server screen has a route and a **screen address**. The server lists its
+routes ([§12.3](#123-routes)), and resolves a screen address through the same developer-written
+table as any component address ([§4](#4-addressing-components)): nothing from the wire names code. Two
+screens MUST NOT share a route or an address.
 
-```php
-#[Screen('/promos/{id}')]
-class PromoScreen extends ServerScreen
-{
-    public int $id;
-
-    #[Action]
-    public function like(): void { /* ... */ }
-
-    public function render(): Node
-    {
-        return Node::column(Node::text("Promo {$this->id}"));
-    }
-
-    public function chrome(): Chrome
-    {
-        return Chrome::make()->navBar(NavBar::make()->title('Promo')->back());
-    }
-}
-```
-
-The reference server registers screens by class, in
-`config('asgard.screens')` or with `Asgard::screen()`, and reads the route
-from the attribute. That keeps the route next to the class, and keeps the
-same rule as §4: the developer writes the map, and nothing from the wire
-names a class. Registering a screen also registers it as a component at
-its **screen address**, by default its class name in dot notation, or the
-attribute's `name`. Two screens MUST NOT share a route or an address.
-
-On the device a server route always opens one generic screen,
-`ServerScreen`. It MUST NOT open one of the app's own screen classes, so a
-server cannot point a route at app code. Its body is a single region named
-`screen`, so everything in §3, §8.1 and §10 applies unchanged:
+On the device a server route always opens one generic screen that the client
+provides for server screens. It MUST NOT open one of the app's own screens, so
+a server cannot point a route at app code. Its body is a single region named
+`screen`, so everything in [§3](#3-regions), [§8.1](#81-the-push-stream) and [§10](#10-events) applies unchanged:
 
 - It asks for its fragment with the usual region request. `component` is
   the screen address and `region` is `screen`.
-- Its `state` is the route's parameters over its query string. Route
-  values are strings on the wire. A server MUST convert a numeric string to an
-  `int` or `float` property and `"true"`, `"false"`, `"1"` or `"0"` to a
-  `bool` property, for screens only. Anything else MUST match exactly, as
-  in §5.1.
+- Its `state` is the route's parameters over its query string. Route values
+  are strings on the wire. A server that wants a number or a boolean
+  converts it: a numeric string to a number, and `"true"`, `"false"`, `"1"`
+  or `"0"` to a boolean. It converts nothing else.
 - Until an answer lands, it shows a placeholder skeleton. It does not wait
-  for ever: see "Giving up" below.
-- Server actions, client actions and pushed fragments work as in regions.
-  A client target can only reach a `#[NativeAction]` on the generic screen,
-  and it has none, so a client target in a server screen runs nothing.
-- A server screen has one body. `#[Region]` methods on a screen class are
-  an error.
-- `render()` may return a Blade view (§9.5). Chrome comes only from
-  `chrome()`, so a `<top-bar>` in the body view is refused like any other
-  chrome in a fragment (§9.3).
+  for ever: see [Giving up](#giving-up) below.
+- Server actions and pushed fragments work as in regions. The generic
+  screen exposes no methods to servers, so a client target in a server
+  screen runs nothing ([§10.3](#103-client-actions)).
+- A server screen has one body region, `screen`, and no others. Its chrome
+  comes only from the `chrome` member, so a chrome type in the body is
+  refused like any other ([§9.3](#93-what-a-fragment-may-not-contain)).
 
 The answer to a screen's render, action or push carries the chrome next to
 the fragment:
 
 ```json
-{"protocol": 1, "region": "screen", "fragment": {...}, "chrome": {...}}
+{"protocol": 1, "region": "screen", "version": "q3V0bG9yZW1pcHN1",
+ "fragment": {"type": "text", "props": {"text": "Promo 7"}},
+ "chrome": {"nav_bar": {"title": "Promo", "back": true}}}
 ```
 
 `chrome` MUST be an object for a screen, `{}` for none, and MUST be absent for
-any other component. On a push it rides in the same event body (§8.1).
+any other component. On a push it rides in the same event body ([§8.1](#81-the-push-stream)).
 
 #### Giving up
 
-A server screen waits at most its screen timeout for its first body: 15
-seconds from its first frame by default, from
-`nativephp.asgard.screen_timeout`, or the screen class's `screenTimeout()`.
-It gives up when that passes, or at once when the request for the body fails
-hard (the reasons in §10.2: `network`, `server` or `invalid`). Giving up
-means:
+A server screen waits at most its screen timeout for its first body, from its
+first frame. 15 seconds is RECOMMENDED. It gives up when that passes, or at
+once when the request for the body fails hard (the reasons in [§10.2](#102-server-actions-the-default):
+`network`, `server` or `invalid`). Giving up means:
 
-1. It goes back to the screen below. When there is none, a cold deep link
-   straight onto a server screen, it replaces itself with the app's `/`
+1. It goes back to the screen below. When there is none, as with a cold deep
+   link straight onto a server screen, it replaces itself with the app's `/`
    route.
-2. Once that screen is the live one,
-   `Native\Mobile\Events\Asgard\ServerScreenFailed` fires, with `uri`,
-   `address`, `reason`, `status` and `message`. The screen hears it with
-   `#[On]`, and the app with `Event::listen`:
+2. Once that screen is the live one, the client surfaces the failure to the
+   app with the screen's URI and address, the reason, the HTTP status when
+   there was one, and a message for logs.
 
-```php
-#[On(ServerScreenFailed::class)]
-public function serverScreenFailed(string $uri, string $reason, ?int $status): void {}
-```
-
-An answer that lands after the screen gave up MUST be dropped. The timer stops for
-good once a body lands: a later refresh, action or push that fails leaves
+An answer that lands after the screen gave up MUST be dropped. The timer stops
+for good once a body lands: a later refresh, action or push that fails leaves
 that body on screen, as for any region. Leaving the screen stops it too.
 
-Every server route opens the class named in `nativephp.asgard.screen`, which
-must extend `ServerScreen`, or `ServerScreen` itself when that is unset. An
-app uses its own subclass to change the skeleton or the timeout.
+A client MAY let the app change the generic screen's skeleton and timeout.
 
 ### 12.2 Chrome
 
-Chrome is to a server screen what a layout is to an app screen. In the app,
-a `NativeLayout` gives a screen its nav bar, tab bar and bottom content, and
-the screen tweaks them with `navigationOptions()`, `tabBarOptions()` and
-the `$hidesNavBar` / `$hidesTabBar` shortcuts. A server screen has no layout
-class, so its chrome says all of that at once.
+Chrome is to a server screen what a layout is to one of the app's own
+screens: its nav bar, tab bar and bottom content, said all at once.
 
-The client MUST check chrome again before it uses it, against a closed
-vocabulary: every key known, every value its type, every button slot a
-valid slot (§10.1, §12.4), every tab URL an app path, every content slot a
-valid fragment (§9.3, §9.4). Chrome that fails MUST leave the screen on the
-chrome it had. It is logged, or throws with `app.debug` on. Until the first
-answer, a screen wears the chrome it last had in this process, or a plain
-nav bar with a back button when it is not the root.
+The client MUST check chrome before it uses it: every known member of the
+right type, every button slot a valid slot ([§10.1](#101-callback-slots), [§12.4](#124-navigation)), every tab URL an
+app path, every content slot a valid fragment ([§9.3](#93-what-a-fragment-may-not-contain), [§9.4](#94-fragments-the-client-cannot-render)), and every media
+URL valid ([§9.6](#96-media-urls)). It MUST ignore a member it does not know ([§5.3](#53-compatibility)), except in
+a slot or a navigation, where it MUST refuse it. Chrome that fails MUST leave
+the screen on the chrome it had, and the client logs why. Until the first
+answer, a screen wears the chrome it last had while the app has been running,
+or a plain nav bar with a back button when it is not the root.
 
-Buttons in chrome MUST register in the `screen` region's callback scope (§10.4),
-so a chrome tap dispatches exactly like a tap in the body.
+Buttons in chrome MUST register in the `screen` region's callback scope
+([§10.4](#104-scopes)), so a chrome tap dispatches exactly like a tap in the body.
 
-| Layout capability today | Chrome field |
-|---|---|
-| `NativeLayout::usesNativeChrome()` | `native` (bool, default false) |
-| `NativeLayout::$font` | `font` |
-| `NativeLayout::navBar()` returning a bar, or null | `nav_bar` present, or absent |
-| `NavBar::title()` / `subtitle()` | `nav_bar.title` / `nav_bar.subtitle` |
-| `NavBar::back()` | `nav_bar.back` |
-| `NavBar::backgroundColor()` / `textColor()` / `font()` / `elevation()` | `nav_bar.background_color` / `text_color` / `font` / `elevation` (0 to 64) |
-| `NavBar::displayMode()` | `nav_bar.display_mode`: `large`, `inline`, `automatic` |
-| `NavBar::scrollBehavior()` | `nav_bar.scroll_behavior`: `collapse`, `pinned`, `enterAlways` |
-| `NavBar::logo()` | `nav_bar.logo`: `{"src", "height"?}`, `src` a URL (§9.6) |
-| `NavBar::titleView()` | `nav_bar.title_view`: a fragment |
-| `NavBar::searchBar()` | `nav_bar.search`: `{"placeholder"?, "debounce_ms"?, "on_query"?}`. `on_query` is a call slot; the query is appended to its args |
-| `NavBar::action()`, `NavAction` | `nav_bar.actions[]`: `{"id", "label"?, "a11y_label"?, "icon"?, "ios_icon"?, "android_icon"?, "image"? (a URL, §9.6), "destructive"?, "disabled"?, "on_press"?}` |
-| `NavAction::items()`, `NavAction::divider()` | `actions[].items[]`, one level deep; `{"id", "divider": true}` |
-| `$hidesNavBar`, `NavBarOptions::hidden()` | `nav_bar.hidden` |
-| `NativeLayout::tabBar()` returning a bar, or null | `tab_bar` present, or absent |
-| `TabBar::activeColor()` / `backgroundColor()` / `textColor()` / `font()` | `tab_bar.active_color` / `background_color` / `text_color` / `font` |
-| `TabBar::labelVisibility()` / `dark()` / `minimizeOnScroll()` | `tab_bar.label_visibility` / `dark` / `minimize_on_scroll` |
-| `TabBar::presentation()` | `tab_bar.presentation`: `{"id", "configuration"?}` |
-| `Tab::link()` / `Tab::action()` / `Tab::search()` | `tab_bar.tabs[]`: `{"id", "label", "url"?, "icon"?, "ios_icon"?, "android_icon"?, "badge"?, "badge_color"?, "news"?, "active"?, "search"?, "on_press"?}` |
-| `Tab::press()` | `tabs[].on_press` |
-| `$hidesTabBar`, `TabBarOptions::hidden()` | `tab_bar.hidden` |
-| `TabBarOptions::highlight()` | `tab_bar.highlight` |
-| `NativeLayout::bottomBar()` | `bottom_bar`: a fragment (native chrome only, as in the app). The reference server takes a Blade view here too (§9.5) |
-| `NativeLayout::tabBarAccessory()` | `tab_accessory`: a fragment (native chrome only), or a Blade view on the reference server |
-| `$this->setNavBar()` / `setTabBar()` | Not needed: the next answer's chrome replaces the old one. |
-| Inline `<native:top-bar>`, `<native:bottom-nav>`, `<native:side-nav>`, `<native:fab>` | Not in chrome. Side nav and FAB have no layout builder in the app either. |
-| `searchItems()` / `onSearchQuery()` for the search tab | Not yet. A search tab shows only while selected, as for a screen without them. |
-| Chrome contributors (plugins) | Still apply. They run on the device, as for any screen. |
+The members of `chrome`:
 
-A link tab opens its route with `replace`, like an app tab, but through the
-checked navigation path in §12.4. Its URL MUST match a route when tapped.
+| Field | Type | Meaning |
+|---|---|---|
+| `native` | boolean | Draw the bars with the platform's own controls. Default false. |
+| `font` | string | Default font name for the chrome. |
+| `nav_bar` | object | The nav bar, below. Absent means no nav bar. |
+| `tab_bar` | object | The tab bar, below. Absent means no tab bar. |
+| `bottom_bar` | fragment | Content pinned to the bottom of the screen. Only with `native`. |
+| `tab_accessory` | fragment | Content attached to the tab bar. Only with `native`. |
+
+`nav_bar`:
+
+| Field | Type | Meaning |
+|---|---|---|
+| `title`, `subtitle` | string | Title text. |
+| `back` | boolean | Show a back button. |
+| `hidden` | boolean | Hide the bar. |
+| `background_color`, `text_color` | string | Colours ([§9.7](#97-element-types)). |
+| `font` | string | Font name. |
+| `elevation` | integer | Shadow depth, 0 to 64. |
+| `display_mode` | string | `large`, `inline` or `automatic`. |
+| `scroll_behavior` | string | `collapse`, `pinned` or `enterAlways`. |
+| `logo` | object | `{"src", "height"?}`. `src` is a media URL ([§9.6](#96-media-urls)). `height` is a size up to 200, default 28. |
+| `title_view` | fragment | Content shown in place of the title. |
+| `search` | object | `{"placeholder"?, "debounce_ms"?, "on_query"?}`. `debounce_ms` is 0 to 5000. `on_query` is a call slot. The query is appended to its args, and it cannot navigate. |
+| `actions` | array | Up to 16 buttons: `{"id", "label"?, "a11y_label"?, "icon"?, "ios_icon"?, "android_icon"?, "image"?, "destructive"?, "disabled"?, "on_press"?, "items"?}`. `image` is a media URL ([§9.6](#96-media-urls)). `items` is a menu of up to 32 more actions, one level deep, where `{"id", "divider": true}` is a separator. |
+
+`tab_bar`:
+
+| Field | Type | Meaning |
+|---|---|---|
+| `hidden` | boolean | Hide the bar. |
+| `active_color`, `background_color`, `text_color` | string | Colours ([§9.7](#97-element-types)). |
+| `font` | string | Font name. |
+| `label_visibility` | string | `labeled`, `selected` or `unlabeled`. |
+| `dark` | boolean | Use the dark style. |
+| `minimize_on_scroll` | boolean | Shrink the bar while content scrolls. |
+| `highlight` | string | The `id` of the tab to show as selected. |
+| `presentation` | object | `{"id", "configuration"?}`: a presentation style the client provides, named by a lower-case id. A client ignores one it does not have. |
+| `tabs` | array | Up to 10 tabs: `{"id", "label", "url"?, "icon"?, "ios_icon"?, "android_icon"?, "badge"?, "badge_color"?, "news"?, "active"?, "search"?, "on_press"?}`. `url` is an app path ([§12.4](#124-navigation)). `search` takes `placeholder` and `debounce_ms` as above. |
+
+An `id` is 1 to 100 characters of `A-Z a-z 0-9 _ . : -`. A string is at most
+1024 bytes. Icon names are the client's to resolve, and a client shows no
+icon for a name it does not know.
+
+A link tab opens its route with `replace`, like one of the app's own tabs, but
+through the checked navigation path in [§12.4](#124-navigation). Its URL MUST match a route when
+tapped. The next answer's chrome replaces the old one whole.
+
+A client MAY add chrome of its own to a server screen, as it would for any
+screen.
 
 ### 12.3 Routes
 
 A server lists its screens' routes at one more endpoint, sealed like render
-(§7.3, §7.4) and read-only like it, so it carries no nonce:
+([§7.3](#73-signatures), [§7.4](#74-encryption)) and read-only like it, so it carries no nonce:
 
 ```
-→  QUERY {path}/routes        (or POST plus X-Asgard-Method: QUERY)
+→  QUERY {base}/routes        (or POST plus X-Asgard-Method: QUERY)
    {"protocol": 1}
 
 ←  200
@@ -1661,38 +1753,26 @@ A server lists its screens' routes at one more endpoint, sealed like render
 - `uri` MUST be a route pattern of literal segments (`A-Za-z0-9._~-`) and
   `{name}` parameters, with an optional `{name?}` allowed last. `/` is the
   root. Nothing else.
-- `screen` MUST be a dot-notation screen address, as in §4.
+- `screen` MUST be a screen address, as in [§4](#4-addressing-components).
 - `version` MUST change whenever the list does.
 
-The client MUST fetch the list **in the background, never in the way of boot
-or a frame.** At boot it registers the list it cached last time, from the
-same shared cache store as the session (§6.2), with no network. Once the
-first screen has mounted, it fetches the list on an AsyncTask lane, caches
-it, and registers it if the version changed. A failed fetch MUST keep the
-cached list, and MAY be retried a minute later. An app that has never
+The client MUST fetch the list **in the background, never in the way of
+start-up or a frame.** At start-up it registers the list it cached last time,
+with no network. Once the first screen has shown, it fetches the list,
+caches it, and registers it if the version changed. A failed fetch MUST keep
+the cached list, and MAY be retried a minute later. An app that has never
 reached its server has no server routes.
 
-Registering replaces the whole server table. The router MUST check each entry
+Registering replaces the whole server table. The client MUST check each entry
 again and MUST drop one that is malformed, or whose pattern is already an app
 route. Server routes MUST be matched only after every app route, literal and
 parameterized, so a server route can add a screen but never replace one of
 the app's.
 
-A server route can also arrive as a request rather than a navigation: a
-cold deep link the shell loads, or the hot-reload restore that sends the
-app back to the screen that was on top. The app's HTTP router has no route
-for it. So on the device, a page load (`Accept: text/html`, or no `Accept`
-at all for a direct dispatch from the shell) for a path that no HTTP route
-matches, and that a registered server route does, opens the generic
-`ServerScreen` the way an app route opens its screen. Every HTTP route
-keeps priority, including the app's native routes. A catch-all fallback
-route does not count as a match. Because the cached list is registered at
-boot, this works offline for any route the app has seen before.
-
-The shells' boot planners only know the app's routes, so a cold link to a
-server route never boots straight into it. It reaches PHP as a WebView page
-load, or is replayed as a warm link once the start screen is up, and opens
-from there.
+A server route can also be reached by a deep link rather than a tap. A client
+MUST resolve it the same way: app routes first, then server routes, opening
+the generic server screen for a match. Because the cached list is registered
+at start-up, this works offline for any route the client has seen before.
 
 ### 12.4 Navigation
 
@@ -1713,84 +1793,96 @@ in chrome can move the app instead of calling a method:
   `fade_from_bottom`, `scale_from_center`, `parallax_push`, `morph`,
   `none`.
 - `{"back": true}` takes only `transition`.
-- A slot MUST NOT have other keys. `on_change` and `on_submit` cannot navigate, and neither
-  can a search field's `on_query`.
+- A navigation MUST NOT have other members ([§5.3](#53-compatibility)). `on_change` and
+  `on_submit` cannot navigate, and neither can a search field's `on_query`.
 
-The server MUST check the shape. The client MUST check it again, and when the tap
-lands it MUST check that the path matches a route it knows right now: one of
-its own or a server screen's. Any route qualifies; no opt-in is needed. A
-path that matches nothing runs nothing and is logged, or throws with
-`app.debug` on. It MUST NOT fall through to the web the way an unmatched
-`navigate()` in app code does, and there is no way to exit to the web.
+The server MUST check the shape. The client MUST check it again, and refuse
+the slot if it is wrong. When the tap lands the client MUST check that the
+path matches a route it knows right now: one of its own or a server screen's.
+Any route qualifies; no opt-in is needed. A path that matches nothing runs
+nothing and is logged. It MUST NOT fall through to a browser or web view, and
+there is no way to leave the app.
 
 ## 13. Open questions
 
 1. Whether a region can be rendered without a bearer token at all, for public
    screens shown before sign-in.
-2. Fragment caching, **in the application only**. Nothing in front of the app
-   will help: no CDN or reverse proxy caches QUERY, and Fastly converts a
-   non-GET/POST request to GET on cache lookup and drops the body, which is
-   documented as not overridable. Symfony's `HttpCache` does mix the request
-   body into the cache key, so an in-app cache works. Do not design around
+2. Fragment caching, **in the server only**. Nothing in front of the server
+   will help: shared caches do not cache QUERY, and at least one CDN turns a
+   request that is not GET or POST into a GET on cache lookup and drops the
+   body, with no way to turn that off. A cache inside the server can mix the
+   request body into its key, so that works. Do not design around
    edge-cached fragments.
 3. ~~Navigation from inside a fragment.~~ Settled: a press slot can hold a
-   navigation (§12.4). Any route the app knows is a target, its own or a
+   navigation ([§12.4](#124-navigation)). Any route the app knows is a target, its own or a
    server screen's, and the client checks the route exists when the tap
-   lands. Web URLs and exiting to the web are not possible. `_navigate` in
-   `props` is still stripped (§9.3).
+   lands. Web URLs and leaving the app are not possible. Props can never
+   navigate ([§9.3](#93-what-a-fragment-may-not-contain)).
 4. Offline queueing of events fired against a fragment that is no longer
    current.
-5. ~~`server_region` has no native renderer on iOS or Android.~~ Settled: the
-   element serialises as a bare `column` (`Element::wireType()`), keyed with
-   the region name and carrying no props of its own, on the flat-buffer, Jump
-   and streaming paths alike. `server_region` remains the PHP-side type, so
-   validation still refuses one inside a fragment. No native change needed.
+5. *Removed in Draft 2. It was about one client's internals, not the
+   protocol.*
 6. ~~The handshake response carries the session `secret` in its body, so a
    logging proxy that sees the handshake sees every key derived from it.~~
    Settled: the handshake is an ephemeral P-256 ECDH exchange, in the spirit
-   of RFC 8291, and the secret never crosses the wire (§6.1). An active
-   attacker that terminates TLS is still TLS's to stop (§7.1).
-7. The push stream holds a server worker per device for its lifetime
-   (§8.1). One stream per device keeps that to one worker, but a server
-   with many devices on server regions at once still needs a worker each.
-   Whether pushes should move to something that does not hold a PHP worker
-   (a separate SSE service fed by the push counters, say) is open.
+   of [RFC 8291](https://www.rfc-editor.org/rfc/rfc8291), and the secret never crosses the wire ([§6.1](#61-handshake)). An active
+   attacker that terminates TLS is still TLS's to stop ([§7.1](#71-threat-model)).
+7. The push stream holds a server worker or connection per device for its
+   lifetime ([§8.1](#81-the-push-stream)). One stream per device keeps that to one each, but a
+   server with many devices on server regions at once still needs one per
+   device. Whether pushes should move to something built to hold many idle
+   connections (a separate event service fed by the push counters, say) is
+   open.
 8. Bursts after a wide push. A push to a channel many devices joined sends
    each of them a signal at about the same time, and each fetches the region
    at once. Whether clients should spread those fetches out (a random delay
-   of a second or two, say) is open. Nothing does it today.
-9. Timeouts are fixed per component or screen class, not per action. Whether
-   an action should be able to say it needs longer is open. Uploads have
-   their own (§10.6).
-   Regions have one too (§3.1), and the same question applies.
-10. Whether a region that failed should retry by itself, with a backoff. Today
-    it waits for `refreshServerRegions()` (from `UsesServer`), so the app
-    decides when.
+   of a second or two, say) is open.
+9. Timeouts are set per component or screen, not per action. Whether an
+   action should be able to say it needs longer is open, and the same
+   question applies to regions ([§3.1](#31-when-the-client-asks)). Uploads have their own ([§10.6](#106-uploads)).
+10. Whether a region that failed should retry by itself, with a backoff.
+    Today a client MUST NOT ([§3.1](#31-when-the-client-asks)). It waits for the app to ask for a
+    refresh, so the app decides when.
+11. Prop names are camelCase (`fontSize`, `a11yLabel`, `leadingAvatar`),
+    while every other name on the wire is snake_case (`on_press`,
+    `nav_bar`, `scroll_view`). One convention should be chosen before 1.0.
 
 ## References
 
 ### Normative references
 
-- [RFC 2119] "Key words for use in RFCs to Indicate Requirement Levels",
-  BCP 14, RFC 2119. <https://www.rfc-editor.org/rfc/rfc2119>
-- [RFC 4648] "The Base16, Base32, and Base64 Data Encodings", RFC 4648.
+- [FIPS 186-5](https://doi.org/10.6028/NIST.FIPS.186-5) "Digital Signature Standard (DSS)", FIPS PUB 186-5, NIST,
+  February 2023. It defines the P-256 curve.
+  <https://doi.org/10.6028/NIST.FIPS.186-5>
+- [RFC 1952](https://www.rfc-editor.org/rfc/rfc1952) "GZIP file format specification version 4.3", [RFC 1952](https://www.rfc-editor.org/rfc/rfc1952).
+  <https://www.rfc-editor.org/rfc/rfc1952>
+- [RFC 2119](https://www.rfc-editor.org/rfc/rfc2119) "Key words for use in RFCs to Indicate Requirement Levels",
+  BCP 14, [RFC 2119](https://www.rfc-editor.org/rfc/rfc2119). <https://www.rfc-editor.org/rfc/rfc2119>
+- [RFC 4648](https://www.rfc-editor.org/rfc/rfc4648) "The Base16, Base32, and Base64 Data Encodings", [RFC 4648](https://www.rfc-editor.org/rfc/rfc4648).
   <https://www.rfc-editor.org/rfc/rfc4648>
-- [RFC 5869] "HMAC-based Extract-and-Expand Key Derivation Function (HKDF)",
-  RFC 5869. <https://www.rfc-editor.org/rfc/rfc5869>
-- [RFC 8174] "Ambiguity of Uppercase vs Lowercase in RFC 2119 Key Words",
-  BCP 14, RFC 8174. <https://www.rfc-editor.org/rfc/rfc8174>
-- [RFC 8188] "Encrypted Content-Encoding for HTTP", RFC 8188.
+- [RFC 5869](https://www.rfc-editor.org/rfc/rfc5869) "HMAC-based Extract-and-Expand Key Derivation Function (HKDF)",
+  [RFC 5869](https://www.rfc-editor.org/rfc/rfc5869). <https://www.rfc-editor.org/rfc/rfc5869>
+- [RFC 8174](https://www.rfc-editor.org/rfc/rfc8174) "Ambiguity of Uppercase vs Lowercase in [RFC 2119](https://www.rfc-editor.org/rfc/rfc2119) Key Words",
+  BCP 14, [RFC 8174](https://www.rfc-editor.org/rfc/rfc8174). <https://www.rfc-editor.org/rfc/rfc8174>
+- [RFC 8188](https://www.rfc-editor.org/rfc/rfc8188) "Encrypted Content-Encoding for HTTP", [RFC 8188](https://www.rfc-editor.org/rfc/rfc8188).
   <https://www.rfc-editor.org/rfc/rfc8188>
-- [RFC 9110] "HTTP Semantics", STD 97, RFC 9110.
+- [RFC 9110](https://www.rfc-editor.org/rfc/rfc9110) "HTTP Semantics", STD 97, [RFC 9110](https://www.rfc-editor.org/rfc/rfc9110).
   <https://www.rfc-editor.org/rfc/rfc9110>
-- [RFC 9421] "HTTP Message Signatures", RFC 9421.
+- [RFC 9421](https://www.rfc-editor.org/rfc/rfc9421) "HTTP Message Signatures", [RFC 9421](https://www.rfc-editor.org/rfc/rfc9421).
   <https://www.rfc-editor.org/rfc/rfc9421>
-- [RFC 9530] "Digest Fields", RFC 9530.
+- [RFC 9530](https://www.rfc-editor.org/rfc/rfc9530) "Digest Fields", [RFC 9530](https://www.rfc-editor.org/rfc/rfc9530).
   <https://www.rfc-editor.org/rfc/rfc9530>
-- [RFC 10008] "The HTTP QUERY Method", RFC 10008.
+- [RFC 10008](https://www.rfc-editor.org/rfc/rfc10008) "The HTTP QUERY Method", [RFC 10008](https://www.rfc-editor.org/rfc/rfc10008).
   <https://www.rfc-editor.org/rfc/rfc10008>
+- [SEC 1](https://www.secg.org/sec1-v2.pdf) "Elliptic Curve Cryptography", version 2.0, Standards for
+  Efficient Cryptography Group, May 2009. Its section 2.3.3 defines the
+  point encoding used in [§6.1](#61-handshake). <https://www.secg.org/sec1-v2.pdf>
+- [SSE](https://html.spec.whatwg.org/multipage/server-sent-events.html) "Server-sent events", HTML Living Standard, WHATWG, section 9.2.
+  <https://html.spec.whatwg.org/multipage/server-sent-events.html>
 
 ### Informative references
 
-- [RFC 8291] "Message Encryption for Web Push", RFC 8291.
+- [RFC 8291](https://www.rfc-editor.org/rfc/rfc8291) "Message Encryption for Web Push", [RFC 8291](https://www.rfc-editor.org/rfc/rfc8291).
   <https://www.rfc-editor.org/rfc/rfc8291>
+- [TAILWIND](https://tailwindcss.com/docs) Tailwind CSS utility classes, the vocabulary of `class` in [§9.7](#97-element-types).
+  <https://tailwindcss.com/docs>
