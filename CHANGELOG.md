@@ -14,6 +14,11 @@
 - The spec talks about servers and clients only. A client is a native app on
   any kind of device, so "device" and "phone" are gone from the text and the
   schema. No wire change.
+- Requests no longer carry `platform`. A client that wants the server to
+  know its platform, or anything else about itself, sends it in the state
+  (§3.1). Servers ignore a `platform` member from older clients, as they do
+  any unknown member (§5.3). Shared push renders are no longer keyed by
+  platform (§8.1).
 
 ## Draft 2 (2026-11-14)
 

@@ -156,16 +156,17 @@ Fragments are held per component instance, so two screens with a region of
 the same name never share one.
 
 A region request goes to `{base}/render` ([§8](#8-transport)). Its body names the component's
-address ([§4](#4-addressing-components)), the region, the component's state ([§5.1](#51-client-state)) and the client's
-platform:
+address ([§4](#4-addressing-components)), the region and the component's state ([§5.1](#51-client-state)):
 
 ```json
 {"protocol":1,"component":"app.native.screens.home","region":"stats",
- "state":{"period":"week"},"platform":"ios"}
+ "state":{"period":"week"}}
 ```
 
-`platform` names the operating system the client runs on: `ios` or
-`android` in this version. The answer carries the
+The protocol has no field for the platform, app version or anything else
+about the client. A client that wants the server to know such a thing sends
+it as part of the state, where it is checked and cached like any other value.
+The answer carries the
 region's fragment ([§9](#9-fragment-format)) and its version token ([§8.1](#81-the-push-stream)):
 
 ```json
@@ -186,7 +187,7 @@ before it is drawn. The body names `regions` instead of `region`:
 
 ```json
 {"protocol":1,"component":"app.native.screens.home","regions":["stats","feed"],
- "state":{"period":"week"},"platform":"ios"}
+ "state":{"period":"week"}}
 ```
 
 `regions` MUST hold 1 to 16 distinct names, and a body MUST have `region` or
@@ -848,7 +849,7 @@ server regions on screen holds no stream at all.
 lists every subscription the client wants:
 
 ```json
-{"protocol":1,"platform":"ios","subscriptions":[
+{"protocol":1,"subscriptions":[
  {"id":"3f9a0c1d2e4b5a6c","component":"promos.show","regions":["screen"],
   "state":{"id":"1"},"versions":{"screen":"q3V0bG9yZW1pcHN1"}},
  {"id":"8b2d77e01c9f4a35","component":"promos.show","regions":["screen"],
@@ -913,7 +914,7 @@ region again. Nothing is lost. Instances that share a subscription but hold
 different tokens for a region MUST NOT send one for it.
 
 **Shared regions.** A server renders a shared region once per push for each
-distinct address, region, platform, canonical state and version, and every
+distinct address, region, canonical state and version, and every
 stream that needs that answer reuses it (from a short-lived cache, say),
 sealing it for its own session. Because that cache is not keyed by user, a
 server MUST render a shared region on the stream with no authenticated user. A
@@ -1385,7 +1386,7 @@ member, to the same endpoint:
 
 ```json
 {"protocol": 1, "component": "app.native.screens.home", "region": "stats",
- "state": {"period": "week"}, "platform": "ios",
+ "state": {"period": "week"},
  "action": {"call": "shuffle", "args": [3]}}
 ```
 
@@ -1561,7 +1562,7 @@ calls directly, rather than a tap in a fragment. It goes to its own endpoint,
 
 ```json
 {"protocol": 1, "component": "app.native.screens.home", "method": "roll",
- "args": [], "state": {"roll": 0}, "platform": "ios"}
+ "args": [], "state": {"roll": 0}}
 ```
 
 Its own endpoint rather than render with another member, because nothing
@@ -1629,7 +1630,7 @@ the rest             the file, exactly `size` bytes
 
 ```json
 {"protocol": 1, "component": "app.native.screens.home", "method": "savePhoto",
- "args": [], "state": {"caption": ""}, "platform": "ios",
+ "args": [], "state": {"caption": ""},
  "filename": "IMG_0001.jpg", "mime": "image/jpeg", "size": 2483113}
 ```
 
