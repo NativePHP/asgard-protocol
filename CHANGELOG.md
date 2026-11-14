@@ -1,5 +1,15 @@
 # Changelog
 
+## Draft 4 (unreleased)
+
+- §1 now contrasts Asgard with the usual setup, where the server is the
+  source of truth. The client is the source of truth for its own state, but
+  that state is still untrusted input to the server.
+- New SHOULD NOT in §1: a client should not provide any way for a server to
+  deliver new executable code, such as a client action or method call that
+  downloads code and runs it.
+- The note comparing Asgard with a remote screen from a dev bridge is gone.
+
 ## Draft 3 (2026-11-14)
 
 - Address segments may contain hyphens (§4), so `reports.sales-chart` is a

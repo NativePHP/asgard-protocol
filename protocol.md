@@ -90,9 +90,11 @@ recommendations in BCP 195 ([RFC 9325](https://www.rfc-editor.org/rfc/rfc9325)).
 The client owns the shell and its own screens. The server may own screens
 inside that shell.
 
-It is not a remote screen. A dev bridge that mirrors a whole screen from a
-dev machine renders every frame there, ships full view state to the client,
-and keeps state on the dev box.
+In most server-rendered setups the server is the source of truth. The page
+is a view of state the server keeps, and the client sends back little more
+than what the user did. That suits a browser. Anyone can change a page with
+dev tools, an extension or a line of JavaScript, so the server cannot rely on
+anything the page holds, and keeping state on the server is the safe default.
 
 Asgard inverts that. The **client owns the shell**: the app, its navigation
 stack, its own screens and their state. It ships locally, renders offline,
@@ -103,10 +105,30 @@ the client opens it, keeps it on its stack, wraps it in chrome the server
 described, and MUST NOT let it replace a route of the app's own. The server is
 a renderer for fragments and screens, not the owner of the app.
 
+A native app is built to work offline and runs only code its developer
+shipped, so the client is the source of truth for its own state. It holds
+that state, changes it locally, and sends it with each request ([§5.1](#51-client-state)). The
+server renders from what it is sent and does not need to keep a copy.
+
+Owning state is not the same as being trusted. An app can be taken apart, its
+key extracted, and the device it runs on rooted ([§7.1](#71-threat-model)). A server still
+treats client state as untrusted input and authorises every action against
+the authenticated identity ([§7.5](#75-authentication-is-separate)), never against what the state claims.
+Anything the client must not control, such as a balance or a permission,
+belongs in the server's session state ([§5.2](#52-server-session-state)) or its own storage.
+
 It is also not remote code. The server sends a description of elements. It
 MUST NOT send code, templates, or anything else the client compiles or
 executes. How a server produces a fragment is up to it ([§9.5](#95-authoring)). What crosses
 the wire is always the fragment JSON of [§9](#9-fragment-format).
+
+This version of the protocol has no way for a server to ship new executable
+code to a client. Asgard cannot stop an app from building one of its own, but
+a client SHOULD NOT provide one, for example through a client action
+([§10.3](#103-client-actions)) or a method call ([§10.5](#105-method-calls)) that downloads code and runs it. Code
+delivered that way lets whoever controls or impersonates the server change
+what the app does, which is the attack the rest of this section rules out. A
+later version may define a safe way to deliver code. This one does not.
 
 ## 2. Roles
 
