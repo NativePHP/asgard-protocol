@@ -1,6 +1,6 @@
 # Changelog
 
-## Draft 3 (unreleased)
+## Draft 3 (2026-11-14)
 
 - Address segments may contain hyphens (§4), so `reports.sales-chart` is a
   valid address. A segment still starts with a letter.

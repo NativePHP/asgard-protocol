@@ -29,7 +29,7 @@ The server builds the UI for each request, rather than picking from screens some
 
 ## Status
 
-Draft 2. It is not stable and may change incompatibly before 1.0. We would like to hear from anyone implementing it, so please open an issue.
+Draft 3. It is not stable and may change incompatibly before 1.0. We would like to hear from anyone implementing it, so please open an issue.
 
 ## Implementations
 
