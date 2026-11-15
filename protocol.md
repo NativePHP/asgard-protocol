@@ -75,7 +75,8 @@ move to a registered code before 1.0 is an open question
 ([RFC 9110 §8.3](https://www.rfc-editor.org/rfc/rfc9110#section-8.3), [RFC 9110 §8.4](https://www.rfc-editor.org/rfc/rfc9110#section-8.4)) carry JSON ([RFC 8259](https://www.rfc-editor.org/rfc/rfc8259)), encrypted with
 `aes128gcm` ([RFC 8188](https://www.rfc-editor.org/rfc/rfc8188)) and optionally compressed with gzip ([RFC 1952](https://www.rfc-editor.org/rfc/rfc1952)).
 `Content-Digest` ([RFC 9530](https://www.rfc-editor.org/rfc/rfc9530)) and HTTP Message Signatures ([RFC 9421](https://www.rfc-editor.org/rfc/rfc9421)) sign
-messages ([§7.3](#73-signatures)). URIs follow [RFC 3986](https://www.rfc-editor.org/rfc/rfc3986). The push stream is
+messages ([§7.3](#73-signatures)). States are compared in their canonical form, the JSON
+Canonicalization Scheme ([RFC 8785](https://www.rfc-editor.org/rfc/rfc8785), [§5.1](#51-client-state)). URIs follow [RFC 3986](https://www.rfc-editor.org/rfc/rfc3986). The push stream is
 Server-Sent Events ([SSE](https://html.spec.whatwg.org/multipage/server-sent-events.html)).
 
 **TLS.** Every Asgard request goes to an `https:` URI ([RFC 9110 §4.2.2](https://www.rfc-editor.org/rfc/rfc9110#section-4.2.2)), so
@@ -410,6 +411,27 @@ State is plain JSON. A server that turns its values into richer types (dates,
 enumerations, records) MUST do so only through an explicit list of the target
 types it allows. A state payload MUST NOT be able to make a server construct a
 type or run code the server did not choose.
+
+**Canonical state.** The canonical state is the state object serialized with
+the JSON Canonicalization Scheme ([RFC 8785](https://www.rfc-editor.org/rfc/rfc8785)): members sorted by name,
+no whitespace, and numbers and strings written one fixed way. Wherever this
+document compares two states, or groups or keys anything by state, it means
+the canonical state. Two states are the same when their canonical states are
+the same bytes. A client or server MUST NOT compare states any other way,
+such as by the bytes that were sent or by its language's own equality, since
+JSON libraries differ in member order, number formatting and string escapes.
+The canonical state is used for:
+
+- grouping instances into push stream subscriptions, and deriving their ids
+  ([§8.1](#81-the-push-stream));
+- matching an event or a patch to the instances it is for ([§8.1](#81-the-push-stream), [§8.2](#82-patches));
+- keying a shared region's render on the stream ([§8.1](#81-the-push-stream));
+- deciding whether a cached copy was made for the request's state ([§8.3](#83-caching)).
+
+RFC 8785 writes every number as an IEEE 754 double, so a state that must
+keep an integer above 2^53 exactly SHOULD hold it as a string. It also
+requires I-JSON, so a state with a string that is not valid Unicode, such as
+a lone surrogate, has no canonical state and SHOULD NOT be sent.
 
 ### 5.2 Server session state
 
@@ -979,8 +1001,9 @@ the server's own request handling, so bearer auth only ever sees a request
 already known to be intact.
 
 A client MUST check a response the same way, digest and signature before it
-decrypts anything, and MUST keep the placeholder on any failure. It MUST NOT render a fragment whose signature did not verify,
-and the same holds for pushed events ([§8.1](#81-the-push-stream)).
+decrypts anything, and MUST keep the placeholder on any failure. It MUST NOT
+render a fragment whose signature did not verify, and the same holds for
+pushed events ([§8.1](#81-the-push-stream)).
 
 ### 7.7 Floods
 
@@ -1101,7 +1124,8 @@ nothing else.
 By default the stream renders nothing. When a region changes it sends a
 **signal**: the region and its new version. The client fetches the region
 through a normal region request, with its own credentials. A region the
-server marks **shared** renders the same for everyone with the same state,
+server marks **shared** renders the same for everyone with the same state
+([§5.1](#51-client-state)),
 and for those the stream sends the fragment inline instead. Shared is
 opt-in, so a region left unmarked costs a round trip, never a leak.
 
@@ -1148,7 +1172,8 @@ lists every subscription the client wants:
   does not know are ignored ([§5.3](#53-compatibility)).
 
 A subscription is one component instance's view of the server: one address
-and one state. Two instances with the same address and the same state share a
+and one state. Two instances with the same address and the same canonical
+state ([§5.1](#51-client-state)) share a
 subscription. Two with different state (`/promos/1` under `/promos/2`) are
 two subscriptions, and each gets the pushes rendered for its own state.
 
@@ -1163,26 +1188,27 @@ request it refuses gets the answer render would give, sealed the same way:
   subscription ([§3](#3-regions), [§4](#4-addressing-components));
 - `500 invalid_fragment` for a fragment it cannot send.
 
+Nothing streams until the request is accepted whole. The server works out
+which push channels each subscription watches from that subscription's
+state, and reads every counter of every subscription in one read per poll.
+
 A client that gets `too_many_regions` MAY split that subscription's regions
 across several subscriptions, each with its own `id`, and open the stream
 again. That is the one case where instances with the same address and state
-have more than one subscription. Nothing streams until the request is
-accepted whole. It works out which push channels each subscription watches from that
-subscription's state, and reads every counter of every subscription in one
-read per poll.
+have more than one subscription.
 
 The request MUST be sealed exactly like a region request ([§7.3](#73-signatures), [§7.4](#74-encryption)). It is a
 read, so it has no nonce.
 
 **The client declares the whole set.** The client works the set out from what
 is on screen: for each live component instance, each region that holds a
-fragment from a good answer, grouped by address and by the state the answer
-was rendered for. Only answered regions are watched, so a session already
+fragment from a good answer, grouped by address and by the canonical state
+the answer was rendered for. Only answered regions are watched, so a session already
 exists when the stream opens. Whenever the set changes (a region gets its
 first answer, a state changes, an instance unmounts) the client MUST open the
 stream again with the new set, signed afresh. An empty set MUST close it. A
 change that leaves the set as it was does nothing, so subscription ids are
-derived from the address and the canonical state, and an unchanged set is
+derived from the address and the canonical state ([§5.1](#51-client-state)), and an unchanged set is
 recognizably unchanged. Changes that land together, such as a navigation
 that unmounts one screen and mounts another, make one reopen.
 
@@ -1299,7 +1325,8 @@ The client MUST verify `sig`, then decrypt, then gunzip when `enc` is `gzip`,
 then check that `subscription` is one it opened this stream with and that
 `region` is one of that subscription's. An event that fails any of those
 checks is logged and MUST be dropped, never acted on. Then it MUST act only on
-instances of that address that asked with that subscription's state:
+instances of that address that asked with that subscription's canonical
+state:
 
 - On a `signal`, each instance whose token for the region differs from the
   signal's is marked to fetch the region again, exactly as a refresh would
@@ -1512,8 +1539,8 @@ not see, just as a shared region must not ([§8.1](#81-the-push-stream)).
 
 **Applying it.** After the checks every event gets ([§8.1](#81-the-push-stream)), a client applies a
 patch to each instance of that address that asked with that subscription's
-state, one instance at a time. It MUST apply the patch only if all of these
-hold:
+canonical state, one instance at a time. It MUST apply the patch only if all
+of these hold:
 
 - the instance is showing a tree it got from the server for that region, not
   its placeholder;
@@ -1611,7 +1638,7 @@ effective TTL in seconds. A server MUST answer a malformed `cache` with
 component. The push stream and the route list never carry `cache`.
 
 A client SHOULD declare only a copy made for the same address, region and
-state as the request, and whose age by its own clock is within its effective
+canonical state ([§5.1](#51-client-state)) as the request, and whose age by its own clock is within its effective
 TTL. It MAY paint an older copy while the request is in flight, but MUST NOT
 declare one.
 
@@ -2741,6 +2768,7 @@ there is no way to leave the app.
 - [RFC 8188](https://www.rfc-editor.org/rfc/rfc8188): Encrypted Content-Encoding for HTTP
 - [RFC 8259](https://www.rfc-editor.org/rfc/rfc8259): The JavaScript Object Notation (JSON) Data Interchange Format, STD 90
 - [RFC 8446](https://www.rfc-editor.org/rfc/rfc8446): The Transport Layer Security (TLS) Protocol Version 1.3
+- [RFC 8785](https://www.rfc-editor.org/rfc/rfc8785): JSON Canonicalization Scheme (JCS)
 - [RFC 9110](https://www.rfc-editor.org/rfc/rfc9110): HTTP Semantics, STD 97
 - [RFC 9421](https://www.rfc-editor.org/rfc/rfc9421): HTTP Message Signatures
 - [RFC 9530](https://www.rfc-editor.org/rfc/rfc9530): Digest Fields

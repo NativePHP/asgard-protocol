@@ -290,6 +290,7 @@
 
   "state": {
     "section": "§5",
+    "canonical": { "standard": "RFC 8785", "name": "JSON Canonicalization Scheme", "section": "§5.1", "note": "The canonical state is the state object serialized with RFC 8785. Two states are the same when their canonical states are the same bytes. Used to group and id stream subscriptions, match events and patches to instances, key shared renders, and match cached copies to a request. Integers above 2^53 SHOULD be sent as strings." },
     "delta_required_on": ["render", "call", "upload"],
     "delta_empty": {},
     "read_only": { "section": "§5.4", "note": "A list of distinct strings, each a member of state. Any other shape is 422 invalid_request." },

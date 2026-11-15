@@ -77,6 +77,12 @@
 - A region or action answer may be compressed only when its delta is `{}`
   and every region in it allows it. An action's answer no longer simply
   follows its region (§7.4).
+- "Canonical state" is defined (§5.1): the state object serialized with the
+  JSON Canonicalization Scheme, RFC 8785. Two states are the same when their
+  canonical states are the same bytes. It is used wherever the spec groups
+  or matches by state: stream subscriptions and their ids, matching events
+  and patches to instances, shared renders, and declaring a cached copy.
+  RFC 8785 joins the references, and the vectors gain canonical states.
 - Region names MUST match `^[A-Za-z0-9_.:-]{1,100}$` (§3), the pattern the
   reference implementations already use. §3 now says once how a server
   checks a region name wherever a request names one (render, batch, action,

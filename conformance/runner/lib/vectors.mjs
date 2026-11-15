@@ -6,6 +6,7 @@ import fs from 'node:fs';
 import {
   aes128gcmDecrypt, aes128gcmEncrypt, aes128gcmHeader, b64u, ecdhAgree, ecdhKeyPair, gunzip, gzip, sessionKeys, sessionSecret, unb64u,
 } from './crypto.mjs';
+import { canonicalize } from './jcs.mjs';
 import { openEvent, openResponse, sealEvent, sealRequest, sealResponse, uploadFrame } from './wire.mjs';
 
 export function checkVectors(file) {
@@ -124,6 +125,12 @@ export function checkVectors(file) {
     eq('decrypted', aes128gcmDecrypt(body, keys[r.ikm], { keyId: r.key_id }).toString(), r.plaintext);
   });
 
+  for (const c of v.canonical ?? []) {
+    check(`canonical ${c.name}`, () => {
+      c.inputs.forEach((input, i) => eq(`input ${i}`, canonicalize(JSON.parse(input)), c.expected));
+    });
+  }
+
   for (const t of v.refuse) {
     check(`refuse ${t.name}`, () => {
       let opened = false;
@@ -140,6 +147,8 @@ export function checkVectors(file) {
           const data = JSON.parse(e.expected.data);
           if (t.set_enc) data.enc = t.set_enc;
           openEvent({ keys, session, requestSignature: streamSig, id: t.id ?? e.id, event: e.event, data: JSON.stringify(data) });
+        } else if (t.open === 'canonical') {
+          canonicalize(JSON.parse(t.input));
         } else if (t.open === 'point') {
           ecdhAgree(ecdhKeyPair().ecdh, unb64u(t.point));
         }

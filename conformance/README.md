@@ -33,10 +33,14 @@ produce:
 - stream events: a signal, a fragment, a gzipped fragment and a patch, each
   bound to the stream request (§8.1, §8.2);
 - a body of three aes128gcm records (§7.4);
+- canonical states (§5.1): JSON texts and the RFC 8785 serialization each
+  must give, covering nested objects, member ordering, numbers, unicode and
+  several spellings of one state, including the examples from RFC 8785;
 - things a receiver must refuse: a truncated body, a body for another key id,
   a response for another request, a response with `Asgard-Cache` stripped or
   `Asgard-Content-Coding` flipped, a renumbered event, an event with `enc`
-  flipped, and a point that is not on P-256.
+  flipped, a state with a lone surrogate, which has no canonical form, and a
+  point that is not on P-256.
 
 The handshake inputs are the ones in the interop file that the reference
 client and server already share, so every key matches theirs. The message

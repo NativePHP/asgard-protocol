@@ -16,6 +16,7 @@ import zlib from 'node:zlib';
 import {
   aes128gcmEncrypt, b64u, contentDigest, ecdhAgree, ecdhKeyPair, hmac, sessionKeys, sessionSecret, unb64u,
 } from '../runner/lib/crypto.mjs';
+import { canonicalize } from '../runner/lib/jcs.mjs';
 import * as sf from '../runner/lib/sf.mjs';
 import {
   eventBase, LABEL, responseComponents, sealEvent, sealRequest, sealResponse, signatureBase, uploadFrame,
@@ -162,7 +163,7 @@ const out = {
   description: 'Asgard protocol 1 conformance vectors, Draft 4. Binary values are base64url without padding unless a field says otherwise. Generated once from fixed inputs by make-vectors.mjs. Every implementation must reproduce every expected value, apart from gzip bytes, which are only checked by inflating them (see README.md). Do not regenerate to make a failing implementation pass.',
   source: 'Handshake inputs and derived keys are those of tests/Fixtures/asgard-interop.json in nativephp/asgard and nativephp/midgard. Message plaintexts are rewritten for Draft 4: regions lists, fragments maps, delta, made_at, subscriptions, and no platform member.',
   sections: {
-    handshake: '§6.1, §7.2', requests: '§7.3, §7.4', responses: '§7.3, §7.4, §8.3', events: '§8.1, §8.2', upload: '§10.6', records: '§7.4', refuse: '§6.3, §7.3, §7.4, §8.1',
+    handshake: '§6.1, §7.2', requests: '§7.3, §7.4', responses: '§7.3, §7.4, §8.3', events: '§8.1, §8.2', upload: '§10.6', records: '§7.4', canonical: '§5.1', refuse: '§5.1, §6.3, §7.3, §7.4, §8.1',
   },
   handshake: {
     ...handshake,
@@ -235,6 +236,45 @@ out.records = {
   expected: { records: Math.ceil(Buffer.byteLength(longText) / 4079), body: b64u(longBody) },
 };
 
+// Canonical state (§5.1): RFC 8785. Each input is JSON text, and every input
+// of a vector has the same canonical form. The first two are the examples of
+// RFC 8785 §3.2.2 and §3.2.3.
+const canonicalInputs = [
+  {
+    name: 'rfc8785_values', why: 'Numbers, escapes and literals, from RFC 8785 §3.2.2.',
+    inputs: ['{\n  "numbers": [333333333.33333329, 1E30, 4.50, 2e-3, 0.000000000000000000000000001],\n  "string": "\\u20ac$\\u000F\\u000aA\'\\u0042\\u0022\\u005c\\\\\\"\\/",\n  "literals": [null, true, false]\n}'],
+  },
+  {
+    name: 'rfc8785_sorting', why: 'Member names sorted by UTF-16 code units, from RFC 8785 §3.2.3.',
+    inputs: ['{"\\u20ac":"Euro Sign","\\r":"Carriage Return","\\ufb33":"Hebrew Letter Dalet With Dagesh","1":"One","\\ud83d\\ude00":"Emoji: Grinning Face","\\u0080":"Control","\\u00f6":"Latin Small Letter O With Diaeresis"}'],
+  },
+  {
+    name: 'nested_state', why: 'A state with nested objects and arrays: every object is sorted at every depth, array order is kept.',
+    inputs: ['{ "period": "week", "filters": { "z": [3, 2, 1], "a": { "y": null, "b": true } }, "user_id": 7, "tags": [{"k": "b", "a": 1}, {"a": 2}] }'],
+  },
+  {
+    name: 'numbers', why: 'Numbers are IEEE 754 doubles written as ECMAScript writes them: -0 is 0, exponents from 1e21 and below 1e-6, and 9007199254740993 cannot be held exactly.',
+    inputs: ['[0, -0, 1.0, 1e2, 10.50, 123456789012345680000, 1e21, 0.000001, 1e-7, 9007199254740993, 5e-324, 1.7976931348623157e308, 0.1, -1.5E-3]'],
+  },
+  {
+    name: 'unicode', why: 'Strings are not normalized: precomposed and decomposed forms stay different. Only control characters, the quote and the backslash are escaped; DEL, slash and non-ASCII are written as they are.',
+    inputs: ['{"nfc":"\\u00e9","nfd":"e\\u0301","emoji":"\\ud83c\\udf89 Zo\\u00eb","ctl":"\\u0000\\b\\t\\u001f\\u007f","esc":"\\"\\\\\\/"}'],
+  },
+  {
+    name: 'same_state', why: 'Member order, whitespace, number spelling and string escapes differ, but these are the same state.',
+    inputs: [
+      '{"b":1,"a":[1.0,"x",{"d":false,"c":null}]}',
+      '{ "a" : [ 1, "\\u0078", { "c" : null, "d" : false } ], "b" : 1e0 }',
+      '{"a":[10e-1,"x",{"c":null,"d":false}],"b":100E-2}',
+    ],
+  },
+];
+out.canonical = canonicalInputs.map((v) => {
+  const expected = canonicalize(JSON.parse(v.inputs[0]));
+  for (const input of v.inputs) if (canonicalize(JSON.parse(input)) !== expected) throw new Error(`${v.name}: inputs differ`);
+  return { ...v, expected };
+});
+
 // Things a receiver MUST refuse.
 const twoRecords = aes128gcmEncrypt(Buffer.alloc(5000, 0x61), keys.enc_s, session, { salt: salt('refuse-truncated') });
 const truncated = twoRecords.subarray(0, 21 + session.length + 4096);
@@ -267,6 +307,10 @@ out.refuse = [
   {
     name: 'event_enc_flipped', why: 'An event whose enc was flipped fails its sig (§8.1).',
     open: 'event', event: 'fragment_gzip', set_enc: 'identity',
+  },
+  {
+    name: 'state_lone_surrogate', why: 'A state string holding a lone surrogate is not I-JSON, so it has no canonical state (§5.1, RFC 8785).',
+    open: 'canonical', input: '{"name":"\\ud800"}',
   },
   {
     name: 'point_not_on_curve', why: 'A client_public that is not on P-256 is refused with 422 (§6.1).',
