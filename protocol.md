@@ -59,10 +59,10 @@ depends on which.
 | 404 | Not Found | [RFC 9110 §15.5.5](https://www.rfc-editor.org/rfc/rfc9110#section-15.5.5) | An unknown address, region or method ([§4](#4-addressing-components), [§10.5](#105-method-calls)) |
 | 405 | Method Not Allowed | [RFC 9110 §15.5.6](https://www.rfc-editor.org/rfc/rfc9110#section-15.5.6) | A method the endpoint does not accept ([§8](#8-transport)) |
 | 413 | Content Too Large | [RFC 9110 §15.5.14](https://www.rfc-editor.org/rfc/rfc9110#section-15.5.14) | An upload over its size limit ([§10.6](#106-uploads)) |
-| 415 | Unsupported Media Type | [RFC 9110 §15.5.16](https://www.rfc-editor.org/rfc/rfc9110#section-15.5.16) | An upload of a type the method does not accept ([§10.6](#106-uploads)) |
+| 415 | Unsupported Media Type | [RFC 9110 §15.5.16](https://www.rfc-editor.org/rfc/rfc9110#section-15.5.16) | An upload of a type the method does not accept ([§10.6](#106-uploads)), or a request content coding other than `aes128gcm` ([§7.4](#74-encryption)) |
 | 419 | (not registered) | This document | The session is missing, unknown or expired ([§6.3](#63-loss)) |
-| 422 | Unprocessable Content | [RFC 9110 §15.5.21](https://www.rfc-editor.org/rfc/rfc9110#section-15.5.21) | A body that is well formed but wrong |
-| 500 | Internal Server Error | [RFC 9110 §15.6.1](https://www.rfc-editor.org/rfc/rfc9110#section-15.6.1) | A fragment or delta the server could not produce |
+| 422 | Unprocessable Content | [RFC 9110 §15.5.21](https://www.rfc-editor.org/rfc/rfc9110#section-15.5.21) | A body that is well formed but wrong, or a protocol version the server does not speak ([§6.1](#61-handshake), [§6.2](#62-use-and-renewal)) |
+| 500 | Internal Server Error | [RFC 9110 §15.6.1](https://www.rfc-editor.org/rfc/rfc9110#section-15.6.1) | A fragment, delta or redraw the server could not produce |
 | 501 | Not Implemented | [RFC 9110 §15.6.2](https://www.rfc-editor.org/rfc/rfc9110#section-15.6.2) | Sent by something in front of the server that refuses QUERY ([§8](#8-transport)) |
 
 419 is not a registered HTTP status code. Asgard borrows it from common web
@@ -562,12 +562,13 @@ ones. It never carries `X-Asgard-Method`:
 - `client_public` and `server_public` MUST be uncompressed points,
   `0x04 || X || Y`, 65 bytes, as defined in [SEC 1 §2.3.3](https://www.secg.org/sec1-v2.pdf), in base64url
   without padding. A point that is malformed or not on the curve MUST be
-  refused with 422.
+  refused with `422 {"error":"invalid_request"}`.
 - `elements` lists the element types the client can render beyond the core
   set ([§9.7](#97-element-types)). It MUST be an array of distinct type names, each matching
   `^[a-z][a-z0-9_]*$` and at most 64 characters long, with at most 256
   entries. It MAY be empty or absent, which means core types only. A server
-  MUST refuse an `elements` that breaks these rules with 422. It MUST NOT
+  MUST refuse an `elements` that breaks these rules with
+  `422 {"error":"invalid_request"}`. It MUST NOT
   name a reserved type ([§9.3](#93-what-a-fragment-may-not-contain)), and a server MUST ignore one that does
   rather than refuse the handshake. The server keeps it with the
   session and MUST NOT send a fragment that uses a type outside the core
@@ -593,9 +594,14 @@ ones. It never carries `X-Asgard-Method`:
   and the expiry ([§6.2](#62-use-and-renewal)).
 - A key the server does not know is `403 {"error":"unknown_key"}`, and so is
   any key while the server has none configured. A protocol the server does
-  not speak is `422 {"error":"unsupported_protocol","protocols":[1]}`. An
-  `accepts` with no encoding the server speaks is
-  `422 {"error":"unsupported_encoding"}`.
+  not speak is `422 {"error":"unsupported_protocol","protocols":[1]}`, where
+  `protocols` lists the versions it does speak. An `accepts` with no
+  encoding the server speaks is `422 {"error":"unsupported_encoding"}`. Any
+  other body the server cannot use (not a JSON object, or a member missing
+  or of the wrong type) is `422 {"error":"invalid_request"}`.
+- The handshake names its version in the body's `protocol`. It does not need
+  the `Asgard-Protocol` header that every later request carries ([§6.2](#62-use-and-renewal)),
+  and a server MUST ignore that header on `{base}/session`.
 
 The handshake itself is neither signed nor encrypted. There is nothing to
 sign it with yet, and nothing in it is secret. [§7.1](#71-threat-model) says what that does and
@@ -610,6 +616,15 @@ Every request after the handshake MUST carry `Asgard-Session-Id: <session>`:
 region requests, actions, method calls, uploads, the push stream and the
 route list. Each accepted request MUST slide the expiry forward on the server.
 The client slides its own copy when a response verifies.
+
+Every request after the handshake MUST also carry `Asgard-Protocol`: the
+protocol version the session was made with, as a decimal integer. For this
+version that is `Asgard-Protocol: 1`. Every sealed response carries it too.
+It is a covered component of both ([§7.3](#73-signatures)). A server MUST refuse a request
+whose `Asgard-Protocol` is missing, or is not a version it speaks, with the
+early rejection `422 {"error":"unsupported_protocol","protocols":[1]}`
+([§7.3](#73-signatures)), listing the versions it does speak as the handshake does. It
+checks this before anything else ([§7.6](#76-rejecting-early)).
 
 A client keeps one session per base URL and `asgard_key`, where every part of
 the client that makes requests can use it. It need only store the 32-byte
@@ -628,6 +643,7 @@ and the user.
 |---|---|---|
 | Session unknown or expired | `419` | Re-handshake once, retry the request once. |
 | Digest, signature or decryption failed, signature expired, nonce reused or missing | `403` | **MUST NOT retry.** Surface an error. |
+| `Asgard-Protocol` missing or unsupported, or a request content coding other than `aes128gcm` | `422`, `415` | **MUST NOT retry.** Surface an error. |
 | Method the endpoint does not accept | `405` | On the first QUERY request after a handshake, fall back to POST as [§8](#8-transport) says. Otherwise **MUST NOT retry.** |
 | Bearer token rejected | `401` | Hand to the app's auth flow. |
 | Unknown component | `404` | Keep the placeholder, log. |
@@ -767,14 +783,18 @@ which the client MUST fill with 16 random bytes. The server MUST remember
 nonces per session until their `expires`, plus the clock skew allowance, and
 MUST refuse a repeat with 403. An action, method call or upload whose
 signature has no nonce MUST get `403 {"error":"nonce_required"}`. Region
-renders, stream requests and the route list are reads and MUST NOT carry a
-nonce.
+renders without an action, stream requests and the route list are reads and
+MUST NOT carry a nonce. A server MUST refuse a read whose signature carries
+one with `422 {"error":"invalid_request"}`.
 
 A call or an upload is known from its endpoint, so the server MUST refuse a
 missing nonce there before it decrypts, as an early rejection (below). An
 action is known only from its body, so on `{base}/render` the server can only
 find a missing nonce after it decrypts. That 403 is sealed like any other
-answer.
+answer. A nonce on a read is also found after decrypting, since a render is
+a read only when its body has no `action`, and its 422 is sealed too. The
+server checks a nonce that a read carries against the ones it has seen, as
+it does any other, before it decrypts ([§7.6](#76-rejecting-early)).
 
 **A response** covers:
 
@@ -796,8 +816,9 @@ response's ([RFC 9421 §2.4](https://www.rfc-editor.org/rfc/rfc9421#section-2.4)
 request it answers, and a fragment captured from one request cannot be
 replayed as the answer to another.
 
-Every answer to a request that passed the checks in [§7.6](#76-rejecting-early) MUST be sealed this
-way, whatever its status. A 404 or a 422 is signed and encrypted like a 200.
+Every answer to a request that passed the first seven checks in [§7.6](#76-rejecting-early) MUST
+be sealed this way, whatever its status. A 404 or a 422 `invalid_request` is
+signed and encrypted like a 200.
 
 **Early rejections** are the exception. They are plain, unsigned JSON, because
 there is either no session to sign with or no reason to trust the one
@@ -806,6 +827,8 @@ claimed. These are all of them:
 | Status | Body | When |
 |---|---|---|
 | 405 | `{"error":"method_not_allowed"}` | The request used a method the endpoint does not accept: on `{base}/session` anything but POST, and elsewhere anything but QUERY or a POST with `X-Asgard-Method: QUERY` ([§8](#8-transport)). |
+| 422 | `{"error":"unsupported_protocol","protocols":[1]}` | `Asgard-Protocol` is missing or is not a version the server speaks ([§6.2](#62-use-and-renewal)). `protocols` lists the ones it does. |
+| 415 | `{"error":"unsupported_coding"}` | `Content-Encoding` is missing or is not `aes128gcm` ([§7.4](#74-encryption)). |
 | 413 | `{"error":"too_large"}` | An upload the server can tell is too big from its size alone ([§10.6](#106-uploads)). |
 | 419 | `{"error":"session_expired"}` | `Asgard-Session-Id` is missing, unknown or expired ([§6.3](#63-loss)). |
 | 403 | `{"error":"forbidden"}` | A check in [§7.6](#76-rejecting-early) failed: the digest, the signature or its freshness, a reused nonce, or decryption. |
@@ -814,7 +837,7 @@ claimed. These are all of them:
 A body MAY also carry a `message` string for logs. A client MUST act on the
 status of an unsigned answer only: to fall back on a 405 to the first QUERY
 request after a handshake ([§8](#8-transport)), to re-handshake on 419, and to
-stop on 403 or 413. It MUST NOT read anything else from it, with one
+stop on 403, 413, 415 or 422. It MUST NOT read anything else from it, with one
 exception: while it probes the transport, it checks that the body is the one
 this table gives for that status ([§8](#8-transport)). An unsigned answer
 with any other status is a failure like a bad signature ([§6.3](#63-loss)).
@@ -868,7 +891,12 @@ them. A 200-row list fragment of about 52,000 bytes went over the wire as about
 
 - Only responses and pushed events are compressed. Requests MUST NOT be
   compressed: they are small, and they carry client state. A server MUST
-  refuse a request with any coding other than `aes128gcm`.
+  refuse a request whose `Content-Encoding` is missing or is anything other
+  than `aes128gcm` with the early rejection
+  `415 {"error":"unsupported_coding"}` ([§7.3](#73-signatures)), the status
+  [RFC 9110 §15.5.16](https://www.rfc-editor.org/rfc/rfc9110#section-15.5.16) gives for a content coding the server does not accept.
+  The answer SHOULD carry `Accept-Encoding: aes128gcm`
+  ([RFC 9110 §12.5.3](https://www.rfc-editor.org/rfc/rfc9110#section-12.5.3)).
 - `Content-Encoding` MUST stay `aes128gcm`. Every sealed response MUST also
   carry `Asgard-Content-Coding`, which is `gzip` when the plaintext was
   gzipped before encryption and `identity` when it was not. The header is a
@@ -927,16 +955,31 @@ a valid signature and an invalid token MUST be rejected.
 
 ### 7.6 Rejecting early
 
-Order of checks, cheapest and most decisive first: session id known →
-`Content-Digest` matches the body → signature valid and fresh → nonce not seen
-before (actions, calls and uploads) → decrypt → bearer token → component
-resolvable → restore state. A request that fails any of the first five MUST be
-discarded before anything parses its body. On the server the first five MUST
-run ahead of the rest of the server's own request handling, so bearer auth
-only ever sees a request already known to be intact.
+Order of checks, cheapest and most decisive first:
 
-A client MUST check a response in the same order and MUST keep the placeholder
-on any failure. It MUST NOT render a fragment whose signature did not verify,
+1. `Asgard-Protocol` is a version the server speaks ([§6.2](#62-use-and-renewal)): else
+   `422 unsupported_protocol`.
+2. `Content-Encoding` is `aes128gcm` ([§7.4](#74-encryption)): else `415 unsupported_coding`.
+3. The session id is known: else `419 session_expired`.
+4. `Content-Digest` matches the body: else `403 forbidden`.
+5. The signature is valid and fresh: else `403 forbidden`.
+6. A call or upload carries a nonce: else `403 nonce_required`. Any nonce
+   the signature carries has not been seen before: else `403 forbidden`.
+7. The body decrypts: else `403 forbidden`.
+8. The request has a nonce if it is an action and none if it is a read
+   ([§7.3](#73-signatures)): else a sealed `403 nonce_required` or `422 invalid_request`.
+9. The bearer token is valid ([§7.5](#75-authentication-is-separate)): else a sealed `401`.
+10. The component, and every region the request names, resolve ([§3](#3-regions), [§4](#4-addressing-components)).
+11. The state is restored.
+
+A request that fails any of the first seven MUST be discarded before
+anything parses its body, and gets the unsigned early rejection that
+[§7.3](#73-signatures) lists. On the server the first seven MUST run ahead of the rest of
+the server's own request handling, so bearer auth only ever sees a request
+already known to be intact.
+
+A client MUST check a response the same way, digest and signature before it
+decrypts anything, and MUST keep the placeholder on any failure. It MUST NOT render a fragment whose signature did not verify,
 and the same holds for pushed events ([§8.1](#81-the-push-stream)).
 
 ### 7.7 Floods
@@ -2047,7 +2090,8 @@ server MUST answer `404 unknown_action`. In particular:
   make the server load a record by sending its id where an object was
   expected.
 
-An argument the method cannot take MUST be a `422`, not a `500`. Everything in
+An argument the method cannot take MUST be a `422 invalid_request`, not a
+`500`. Everything in
 `args` is untrusted input in the same sense as client state ([§5.1](#51-client-state)): an action
 MUST authorize against the bearer identity ([§7.5](#75-authentication-is-separate)), never against what it was
 sent.
@@ -2101,13 +2145,16 @@ region. It MUST skip a region with a request that went out after this one,
 because that answer is newer. A painted part supersedes any older request
 for its region still in flight. Each part MUST be checked as a region render is
 ([§9.4](#94-fragments-the-client-cannot-render)), and one that is refused is not surfaced as a failure. A name that is
-not a region of the component is a server error, and the server answers `500`.
+not a region of the component is a server error, and the server answers
+`500 invalid_redraw`.
 
 **Other components in this client, a hint.** The method names another
 component's address and at most one of its regions. Leaving the region out
 means all of them. The server does not have that component's state, so it
 does not render it. It only names it, after checking the address and region
-exist:
+exist. One that does not exist is a server error too, and also gets
+`500 invalid_redraw`, not `404 unknown_component`: the request named nothing
+wrong, the server's own method did:
 
 ```json
 {
@@ -2134,7 +2181,8 @@ exist:
 
 A hint for a whole component covers hints for its regions, and an answer
 MUST carry at most 16 hints and 16 inline regions besides the action's own,
-so at most 17 parts.
+so at most 17 parts. A method that asks for more is a server error,
+`500 invalid_redraw`.
 
 In the client a hint is handled like a stream signal ([§8.1](#81-the-push-stream)): every live
 instance at that address that drew the region is marked, and fetches it with
@@ -2370,8 +2418,8 @@ Errors are a call's, plus:
 |---|---|---|
 | 413 | `{"error":"too_large"}` | Over the method's limit or the server's. When the server can tell from the size alone, it refuses before decrypting, and that 413 is plain and unsigned ([§7.3](#73-signatures)). |
 | 415 | `{"error":"unsupported_type"}` | The sniffed type is not one the method accepts. |
-| 404 | `{"error":"unknown_method"}` | Not a method exposed for uploads, or the args do not fit. |
-| 422 | `{"error":"invalid_request"}` | A bad frame, a `size` that is not the bytes sent, an empty file, or a header member the server does not know. |
+| 404 | `{"error":"unknown_method"}` | Not a method exposed for uploads. A method exposed only for actions and calls does not count. |
+| 422 | `{"error":"invalid_request"}` | A bad frame, a `size` that is not the bytes sent, an empty file, a header member the server does not know, or args that do not fit, as for a call. |
 
 Failures are surfaced as for a call, with the method name as the action and
 no region. Two reasons are only for uploads, and both mean nothing was sent:
@@ -2398,6 +2446,10 @@ record is future work.
 `protocol` in the handshake is an integer. A server that does not speak the
 client's version MUST say so at handshake, not mid-render. Clients support exactly
 one version per build; servers MAY support several.
+
+After the handshake the version travels in the `Asgard-Protocol` header of
+every request and every sealed response ([§6.2](#62-use-and-renewal)), and `protocol` in every
+body carries the same value.
 
 ## 12. Server screens
 

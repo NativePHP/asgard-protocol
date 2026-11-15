@@ -53,11 +53,11 @@
 
   "headers": [
     { "name": "Asgard-Session-Id", "direction": "request", "signed": true, "section": "§6.2", "note": "On every request after the handshake. Its value is the session id, which is also the signature keyid and the aes128gcm keyid." },
-    { "name": "Asgard-Protocol", "direction": "both", "signed": true, "value": "1", "section": "§7.3", "note": "A covered component of every signed request and response. The spec covers it but never states its value; the reference implementations send \"1\"." },
+    { "name": "Asgard-Protocol", "direction": "both", "signed": true, "value": "1", "section": "§6.2, §7.3", "note": "The protocol version as a decimal integer. Every request after the handshake MUST carry it, and every sealed response does; a covered component of both. A request with it missing or unsupported is the early rejection 422 unsupported_protocol. The handshake carries its version in the body instead, and a server ignores the header on {base}/session." },
     { "name": "X-Asgard-Method", "direction": "request", "signed": "when present", "value": "QUERY", "section": "§8", "note": "Turns a POST into a QUERY. Never on {base}/session." },
     { "name": "Authorization", "direction": "request", "signed": "when present", "section": "§7.3, §7.5", "note": "The app's own bearer token. Covered when, and only when, the request carries it." },
     { "name": "Content-Type", "direction": "both", "signed": true, "value": "application/json", "section": "§7.4, §8", "note": "A client MUST send it. It stays application/json for encrypted bodies and upload frames. A stream answer is text/event-stream." },
-    { "name": "Content-Encoding", "direction": "both", "signed": true, "value": "aes128gcm", "section": "§7.4", "note": "Always aes128gcm on a sealed message. A server MUST refuse a request with any other coding." },
+    { "name": "Content-Encoding", "direction": "both", "signed": true, "value": "aes128gcm", "section": "§7.4", "note": "Always aes128gcm on a sealed message. A server MUST refuse a request with any other coding, or none, with the early rejection 415 unsupported_coding, which SHOULD carry Accept-Encoding: aes128gcm." },
     { "name": "Content-Digest", "direction": "both", "signed": true, "section": "§7.3", "note": "sha-256 over the body as sent (the ciphertext)." },
     { "name": "Asgard-Content-Coding", "direction": "response", "signed": true, "values": ["gzip", "identity"], "section": "§7.4", "note": "On every sealed response. Any other value, or no header, MUST be refused." },
     { "name": "Asgard-Cache", "direction": "response", "signed": "when present", "values": ["invalidate"], "section": "§8.3", "note": "One lowercase word of up to 32 letters. A client ignores any value but invalidate. Unsigned answers never carry it." },
@@ -74,16 +74,17 @@
     { "code": 404, "name": "Not Found", "section": "§4, §10.2, §10.5", "used_for": "An unknown address, region, action or method." },
     { "code": 405, "name": "Method Not Allowed", "section": "§8", "used_for": "A method the endpoint does not accept." },
     { "code": 413, "name": "Content Too Large", "section": "§10.6", "used_for": "An upload over its size limit." },
-    { "code": 415, "name": "Unsupported Media Type", "section": "§10.6", "used_for": "An upload of a type the method does not accept." },
+    { "code": 415, "name": "Unsupported Media Type", "section": "§7.4, §10.6", "used_for": "An upload of a type the method does not accept, or a request content coding other than aes128gcm." },
     { "code": 419, "name": null, "section": "§6.3", "used_for": "The session is missing, unknown or expired. The client re-handshakes once and retries once. Not a registered code (open question 12)." },
-    { "code": 422, "name": "Unprocessable Content", "section": "Building on HTTP", "used_for": "A body that is well formed but wrong." },
-    { "code": 500, "name": "Internal Server Error", "section": "§5.4, §8.1, §10.2", "used_for": "A fragment or delta the server could not produce." },
+    { "code": 422, "name": "Unprocessable Content", "section": "Building on HTTP, §6.2", "used_for": "A body that is well formed but wrong, or a protocol version the server does not speak." },
+    { "code": 500, "name": "Internal Server Error", "section": "§5.4, §8.1, §10.2", "used_for": "A fragment, delta or redraw the server could not produce." },
     { "code": 501, "name": "Not Implemented", "section": "§8", "used_for": "Sent by something in front of the server that refuses QUERY. The client falls back to POST." }
   ],
 
   "errors": [
     { "error": "unknown_key", "status": 403, "sealed": false, "endpoints": ["session"], "section": "§6.1", "meaning": "The handshake named a key the server does not know, or the server has none configured." },
-    { "error": "unsupported_protocol", "status": 422, "sealed": false, "endpoints": ["session"], "section": "§6.1", "meaning": "The server does not speak the client's protocol. The body also carries `protocols`, the list it does speak." },
+    { "error": "unsupported_protocol", "status": 422, "sealed": false, "endpoints": ["session", "render", "stream", "call", "upload", "routes"], "section": "§6.1, §6.2, §7.3", "meaning": "The server does not speak the client's protocol: at the handshake the body's `protocol`, afterwards a missing or unsupported Asgard-Protocol header (an early rejection). The body also carries `protocols`, the list it does speak." },
+    { "error": "unsupported_coding", "status": 415, "sealed": false, "endpoints": ["render", "stream", "call", "upload", "routes"], "section": "§7.3, §7.4", "meaning": "The request's Content-Encoding is missing or is not aes128gcm. An early rejection." },
     { "error": "unsupported_encoding", "status": 422, "sealed": false, "endpoints": ["session"], "section": "§6.1", "meaning": "No encoding in `accepts` is one the server speaks." },
     { "error": "method_not_allowed", "status": 405, "sealed": false, "endpoints": ["session", "render", "stream", "call", "upload", "routes"], "section": "§7.3, §8", "meaning": "On session anything but POST; elsewhere anything but QUERY or POST with X-Asgard-Method: QUERY." },
     { "error": "too_large", "status": 413, "sealed": "either", "endpoints": ["upload"], "section": "§7.3, §10.6", "meaning": "Over the method's limit or the server's. Plain and unsigned when the server can tell from the size alone, before decrypting; sealed otherwise." },
@@ -92,12 +93,13 @@
     { "error": "nonce_required", "status": 403, "sealed": "call and upload: plain; render action: sealed", "endpoints": ["render", "call", "upload"], "section": "§7.3", "meaning": "An action, method call or upload whose signature has no nonce. A call or upload is refused before decrypting; an action is only found after." },
     { "error": "unknown_component", "status": 404, "sealed": true, "endpoints": ["render", "stream", "call", "upload"], "section": "§3, §4, §8.1, §10.5", "meaning": "An unknown address, or a well-formed region name the component does not have, wherever a request names one: a render or batch, an action, a call's or upload's regions, or a stream subscription." },
     { "error": "unknown_action", "status": 404, "sealed": true, "endpoints": ["render"], "section": "§10.2", "meaning": "`action.call` is not a method the component exposed to clients." },
-    { "error": "unknown_method", "status": 404, "sealed": true, "endpoints": ["call", "upload"], "section": "§10.5, §10.6", "meaning": "Not a method the component exposed for calls (or, on upload, for uploads)." },
+    { "error": "unknown_method", "status": 404, "sealed": true, "endpoints": ["call", "upload"], "section": "§10.5, §10.6", "meaning": "Not a method the component exposed for calls (or, on upload, for uploads). Args that do not fit are 422 invalid_request, not this." },
     { "error": "unsupported_type", "status": 415, "sealed": true, "endpoints": ["upload"], "section": "§10.6", "meaning": "The type sniffed from the file's bytes is not one the method accepts." },
-    { "error": "invalid_request", "status": 422, "sealed": true, "endpoints": ["render", "stream", "call", "upload", "routes"], "section": "§5.4, §8.3, §10.2, §10.5, §10.6", "meaning": "A malformed body, a malformed regions list or region name, a malformed read_only or cache, a bad reason, an action that does not name exactly one region, a stream request with an action or a bad subscription, an unknown member where one is refused, state or args that do not fit, or a bad upload frame." },
+    { "error": "invalid_request", "status": 422, "sealed": "session: plain; elsewhere: sealed", "endpoints": ["session", "render", "stream", "call", "upload", "routes"], "section": "§3, §5.4, §6.1, §7.3, §8.1, §8.3, §10.2, §10.5, §10.6", "meaning": "A malformed body, at the handshake a bad client_public or elements, a read (render without action, stream, routes) whose signature carries a nonce, a malformed regions list or region name, a malformed read_only or cache, a bad reason, an action that does not name exactly one region, a stream request with an action or a bad subscription, an unknown member where one is refused, state or args that do not fit, or a bad upload frame." },
     { "error": "too_many_regions", "status": 422, "sealed": true, "endpoints": ["render", "stream", "call", "upload"], "section": "§3.1, §8.1, §10.5", "meaning": "The request, or one stream subscription, names more regions than the server's limit. Nothing is rendered or streamed, and a call's method does not run." },
     { "error": "invalid_delta", "status": 500, "sealed": true, "endpoints": ["render", "call", "upload"], "section": "§5.4", "meaning": "A delta value is not a plain JSON value." },
     { "error": "read_only_changed", "status": 500, "sealed": true, "endpoints": ["render", "call", "upload"], "level": "SHOULD", "section": "§5.4", "meaning": "In development, the server changed a member the request named in read_only. In production it leaves the member out and logs it." },
+    { "error": "invalid_redraw", "status": 500, "sealed": true, "endpoints": ["render", "call", "upload"], "section": "§10.2", "meaning": "The method asked to redraw a name that is not a region of its component, hinted an address or region that does not exist, or asked for more than 16 inline regions or 16 hints." },
     { "error": "invalid_fragment", "status": 500, "sealed": true, "endpoints": ["render", "stream", "call", "upload"], "section": "§8.1", "meaning": "A fragment the server cannot send, such as one using a type the client did not advertise. Named only in §8.1; the other endpoints follow the general 500 rule." }
   ],
 
@@ -106,6 +108,8 @@
     "note": "The only unsigned answers after the handshake. A client acts on their status only, and checks the body against this list only while it probes the transport.",
     "value": [
       { "status": 405, "body": { "error": "method_not_allowed" } },
+      { "status": 422, "body": { "error": "unsupported_protocol", "protocols": [1] } },
+      { "status": 415, "body": { "error": "unsupported_coding" } },
       { "status": 413, "body": { "error": "too_large" } },
       { "status": 419, "body": { "error": "session_expired" } },
       { "status": 403, "body": { "error": "forbidden" } },
@@ -116,9 +120,9 @@
 
   "check_order": {
     "section": "§7.6",
-    "value": ["session id known", "Content-Digest matches", "signature valid and fresh", "nonce not seen (actions, calls, uploads)", "decrypt", "bearer token", "component resolvable", "restore state"],
-    "early": 5,
-    "note": "A request that fails any of the first five MUST be discarded before anything parses its body, and those five MUST run ahead of the server's own request handling."
+    "value": ["Asgard-Protocol supported", "Content-Encoding is aes128gcm", "session id known", "Content-Digest matches", "signature valid and fresh", "nonce present on a call or upload, and any nonce not seen before", "decrypt", "nonce on every action and none on a read", "bearer token", "component and regions resolvable", "restore state"],
+    "early": 7,
+    "note": "A request that fails any of the first seven MUST be discarded before anything parses its body, with the unsigned early rejection for that check, and those seven MUST run ahead of the server's own request handling."
   },
 
   "failure_reasons": [

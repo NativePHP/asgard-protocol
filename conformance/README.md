@@ -164,7 +164,7 @@ advertises.
 | `method`, `override` | Force the HTTP method, and whether to send `X-Asgard-Method: QUERY`. Left out, the request uses the form the probe settled on. |
 | `authorization` | A bearer token header, sent and covered by the signature. |
 | `headers` | More headers, sent but not signed (`last-event-id`, say). |
-| `seal` | How to seal it. `nonce`: `true`, `false` or `"reuse"` (the previous step's). Left out, a nonce goes on actions, calls and uploads only. `session`: `"none"` or `"unknown"`. `created_offset`: seconds added to `created`. `tamper`: break one thing on purpose: `flip_body`, `flip_signature`, `lifetime`, `keyid`, `alg`, `tag`, `params`, `drop_component`, `add_headers` (unsigned), `body_key_id`. |
+| `seal` | How to seal it. `nonce`: `true`, `false` or `"reuse"` (the previous step's). Left out, a nonce goes on actions, calls and uploads only. `session`: `"none"` or `"unknown"`. `created_offset`: seconds added to `created`. `tamper`: break one thing on purpose: `flip_body`, `flip_signature`, `lifetime`, `keyid`, `alg`, `tag`, `params`, `drop_component`, `add_headers` (unsigned), `body_key_id`, `content_encoding` (signed), `protocol_header` (signed; `null` leaves the header out). |
 | `session` | `"fresh"` for a new handshake before this step. |
 | `use` | On a `session` step: carry on with the session this handshake made. |
 
@@ -284,14 +284,14 @@ Sections with no server case yet, and why:
 | §5.1 | That state cannot make a server construct a type. |
 | §5.4 | Members a server supplies itself, and `invalid_delta`: the fixtures have neither. `read_only` on a call or upload. |
 | §6.2 | Sliding expiry: it needs waiting out a session lifetime. |
-| §7.4 | A request with a coding other than aes128gcm (the spec names no status). Gzip correctness is checked whenever a server compresses, but not forced. |
+| §7.4 | Gzip correctness is checked whenever a server compresses, but not forced. |
 | §7.6 | The order of checks beyond what single failures show. |
 | §8.1 | `too_many_regions` on a subscription (the limit is the server's own). A shared region rendered with no user on the stream, `max_age` on events, 204, the stream's lifetime and `retry`. Version tokens shared by two instances. |
 | §8.2 | Patches sent on connect for a gap, `append`, `remove` and `keep`, and fallback when a record is missing. A server that never patches passes `stream-patch` with a signal. |
 | §8.3 | `Asgard-Cache: invalidate` (no fixture triggers it), `max_age`, and refusing `cached` for an undeclared region. |
 | §9.3, §9.6 | A server never sending a reserved type, a reserved prop, a non-https media URL or a fragment deeper than 64. Every fragment is checked for these, but no fixture tries to produce one. |
 | §10.1 | Slots in fragments: no fixture region has a button. |
-| §10.2 | The 16-hint and 16-inline-region limits, and the 500 for redrawing a region that does not exist. |
+| §10.2 | The 16-hint and 16-inline-region limits, and `500 invalid_redraw` for redrawing a region that does not exist. No fixture method asks for one. |
 | §10.5 | `too_many_regions` on a call. |
 | §10.6 | Cleaning the file name, and an empty file. |
 | §12.1 | Boolean route values, and actions on a screen. |

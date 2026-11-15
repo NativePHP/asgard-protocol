@@ -88,6 +88,31 @@
   subscription over it gets `422 too_many_regions`. A client may split it
   across several subscriptions (§8.1). The limit of 1 to 16 subscriptions
   stays.
+- Every request after the handshake MUST carry `Asgard-Protocol: 1`, the
+  session's protocol version (§6.2). Every sealed response carries it too.
+  One that is missing or names a version the server does not speak gets the
+  early rejection `422 {"error":"unsupported_protocol","protocols":[1]}`.
+  The handshake carries its version in the body, and a server ignores the
+  header there.
+- A request whose `Content-Encoding` is missing or not `aes128gcm` gets the
+  early rejection `415 {"error":"unsupported_coding"}` (§7.4), which SHOULD
+  carry `Accept-Encoding: aes128gcm`. The spec named no status before.
+- A read (a render without an action, a stream request or the route list)
+  whose signature carries a nonce is refused with a sealed
+  `422 invalid_request` (§7.3).
+- §7.6 lists the checks as numbered steps with the error each one gives:
+  `Asgard-Protocol` and `Content-Encoding` come first, the nonce rules are
+  split into what can be checked before decrypting and after, and the first
+  seven are early rejections.
+- Every error now has an `error` code. The handshake's 422s for a bad
+  `client_public`, a bad `elements` or an unusable body are
+  `invalid_request`, and so are a bad stream subscription, a stream request
+  with an action, and an argument an action cannot take. A redraw or hint
+  the server's own method gets wrong (a name that is not a region, an
+  address that does not exist, or more than 16 of either) is the new
+  `500 invalid_redraw` (§10.2).
+- Args that do not fit an upload method are `422 invalid_request`, as for a
+  call, not `404 unknown_method` (§10.6).
 - The `cached` example in §8.3 now carries `delta`, as every render answer
   must (§5.4).
 - The recommended client cap on uploads is 20 MiB (20,971,520 bytes), not

@@ -1,5 +1,5 @@
 {
-  "description": "An elements list that repeats a name is refused with 422.",
+  "description": "An elements list that repeats a name is refused with 422 invalid_request.",
   "sections": [
     "§6.1"
   ]

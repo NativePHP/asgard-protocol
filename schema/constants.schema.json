@@ -117,7 +117,7 @@
             "required": ["status", "body"],
             "properties": {
               "status": { "type": "integer" },
-              "body": { "type": "object", "required": ["error"], "properties": { "error": { "type": "string" } }, "additionalProperties": false }
+              "body": { "type": "object", "required": ["error"], "properties": { "error": { "type": "string" }, "protocols": { "type": "array", "items": { "type": "integer", "minimum": 1 }, "minItems": 1 } }, "additionalProperties": false }
             },
             "additionalProperties": false
           }

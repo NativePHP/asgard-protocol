@@ -11,12 +11,11 @@ import { openStream, request } from './http.mjs';
 import { match, substitute } from './match.mjs';
 import { openEvent, openResponse, sealRequest, uploadFrame } from './wire.mjs';
 
-const EARLY = {
-  405: 'method_not_allowed',
-  413: 'too_large',
-  419: 'session_expired',
-  403: ['forbidden', 'nonce_required'],
-};
+import constants from '../../../schema/constants.json' with { type: 'json' };
+
+// The unsigned early rejections of §7.3, as status -> list of error codes.
+const EARLY = {};
+for (const { status, body } of constants.early_rejections.value) (EARLY[status] ??= []).push(body.error);
 
 export function loadCases(dir) {
   const cases = [];
@@ -235,6 +234,8 @@ export class Runner {
     if (tamper.flip_body) tamper.flipBody = true;
     if (tamper.body_key_id) tamper.bodyKeyId = tamper.body_key_id;
     if (tamper.add_headers) tamper.addHeaders = tamper.add_headers;
+    if (tamper.content_encoding !== undefined) tamper.contentEncoding = tamper.content_encoding;
+    if ('protocol_header' in tamper) tamper.protocolHeader = tamper.protocol_header;
     if (seal.session) tamper.session = seal.session;
 
     const signed = {};

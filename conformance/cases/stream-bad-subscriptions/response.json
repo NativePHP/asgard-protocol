@@ -3,6 +3,6 @@
   "sealed": true,
   "body": {
     "$partial": true,
-    "error": "{{string}}"
+    "error": "invalid_request"
   }
 }

@@ -1,5 +1,8 @@
 {
   "status": 422,
   "sealed": false,
-  "body": "{{object}}"
+  "body": {
+    "$partial": true,
+    "error": "invalid_request"
+  }
 }

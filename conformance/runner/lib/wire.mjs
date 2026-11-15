@@ -71,12 +71,19 @@ export function sealRequest({
     'asgard-protocol': PROTOCOL_HEADER,
     'asgard-session-id': session,
   };
+  // A case can send another Asgard-Protocol value, or none (null). With none
+  // the header is also left out of the covered components, since RFC 9421
+  // cannot cover a header the message does not have.
+  if ('protocolHeader' in tamper) {
+    if (tamper.protocolHeader === null) delete headers['asgard-protocol'];
+    else headers['asgard-protocol'] = String(tamper.protocolHeader);
+  }
   for (const name of OPTIONAL_REQUEST_COMPONENTS) {
     const value = lower(extra)[name];
     if (value !== undefined) headers[name] = value;
   }
 
-  let covered = requestComponents(headers);
+  let covered = requestComponents(headers).filter((n) => n.startsWith('@') || n in headers);
   if (tamper.cover) covered = tamper.cover(covered);
 
   const params = {

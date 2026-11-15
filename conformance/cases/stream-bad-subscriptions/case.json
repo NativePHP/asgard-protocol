@@ -1,5 +1,5 @@
 {
-  "description": "A subscription id outside 1 to 32 of A-Z a-z 0-9 _ - is refused with a sealed 422 before anything streams.",
+  "description": "A subscription id outside 1 to 32 of A-Z a-z 0-9 _ - is refused with a sealed 422 invalid_request before anything streams.",
   "sections": [
     "§8.1"
   ]
