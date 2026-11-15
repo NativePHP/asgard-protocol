@@ -29,15 +29,18 @@ The server builds the UI for each request, rather than picking from screens some
 
 ## How it compares
 
-The idea isn't new. Plenty of tools render UI on a server and update it in place, on the web and in cross-platform frameworks. What they share is that each one comes with its own stack: you get the format, the transport and the state model by adopting that tool's server, client library or language. Only one of them, Inertia, has a written protocol that other stacks implement, and it covers much less.
+The idea isn't new. Plenty of tools render UI on a server and update it in place, on the web and in cross-platform frameworks. What they share is that each one comes with its own stack: you get the format, the transport and the state model by adopting that tool's server, client library or language. Datastar and Inertia come closest, with short written protocols that servers in many languages implement, but each still has one client and covers far less.
 
 On the web:
 
 - **Phoenix LiveView** keeps state on the server over a WebSocket and sends diffs. Its wire format belongs to Phoenix, and so does LiveView Native, which brings the same model to SwiftUI and Jetpack Compose.
 - **Livewire** sends component state with each request and gets HTML back. It is a Laravel package for Blade, and its payload is an implementation detail.
-- **HTMX** and **Hotwire** swap in HTML fragments from any server. They are close in spirit and stack-neutral on the server, but the fragment is HTML and the client is a browser. Hotwire Native wraps those web pages in a native shell rather than drawing native elements.
-- **Inertia.js** is the closest to a spec. It has a short published protocol (a header, a page object with a component name and its props, a version check and partial reloads), and there are server adapters for Laravel, Rails, Django, Phoenix and others. But the server only sends data: the client must already ship every page as a React, Vue or Svelte component, so a new screen still means a new client build. It works on whole pages, leaves security to cookies and CSRF, and has no push or uploads of its own.
+- **HTMX** and **Hotwire** swap in HTML fragments from any server. They work with any server, but the fragment is HTML and the client is a browser. Hotwire Native wraps those web pages in a native shell rather than drawing native elements.
+- **Datastar** is the closest in spirit. The client sends its state ("signals") with each request, except signals whose names start with an underscore, which stay in the browser. The server answers over Server-Sent Events with two kinds of event: one patches HTML elements into the page, the other patches signals using JSON Merge Patch. There are SDKs for over a dozen server languages, written against a short design document and checked by a shared test suite. But the client is Datastar's own JavaScript library in a browser, the elements are HTML with expressions in their attributes, and a server can send a script to run. Security is left to HTTP.
+- **Inertia.js** has a short published protocol too (a header, a page object with a component name and its props, a version check and partial reloads), and there are server adapters for Laravel, Rails, Django, Phoenix and others. But the server only sends data: the client must already ship every page as a React, Vue or Svelte component, so a new screen still means a new client build. It works on whole pages, leaves security to cookies and CSRF, and has no push or uploads of its own.
 - **ASP.NET Web Forms ViewState** round-tripped serialized page state on every post. It is the old lesson in what happens when that state gets big or is trusted too much.
+
+All of these start from a page that needs the network. A web app can work offline, with a service worker, the Cache API and IndexedDB, but it has to opt in and build that itself. The first visit still needs a connection, and the browser may clear what was stored when space runs low or the site goes unused. A native app is offline-first by default: its code and screens are installed with it. Asgard keeps that, because every region has a placeholder the app ships, so the app still works when the server can't be reached.
 
 In cross-platform frameworks:
 
