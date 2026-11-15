@@ -15,10 +15,19 @@
   when it was rendered, and may carry `max_age` in seconds (§8.2).
 - Region cache (§8.2). Render, batch, action, call and upload requests may
   declare the copies the client holds in `cache`, as `{made_at, ttl}` per
-  region. A server may answer `{"cached":true}` for a fresh one instead of
+  region. A server may answer a part with `{"cached":true}` for a fresh one instead of
   rendering it, and never for a region the request did not declare. A client
   that no longer holds the copy asks once more without declaring it.
-- Render and batch requests sent because of a push carry `"reason":"push"`.
+- Render requests sent because of a push carry `"reason":"push"`.
+- One request shape and one answer shape (§3.1). A region request always
+  names `regions`, a list even for one region, and `region` is gone. Every
+  answer is a `fragments` map keyed by region, so the top-level `region`,
+  `version`, `made_at` and `fragment` are gone too. An action names exactly
+  one region in `regions`, and its own region is a part of `fragments` next
+  to any others it redraws. A server screen asks for `["screen"]`.
+- The fixed limit of 16 regions per request is gone. A server SHOULD set its
+  own limit and answer a request over it with `422 too_many_regions`; a
+  client may split the regions across smaller requests and try again.
 - New response header `Asgard-Cache: invalidate`, which makes the server
   render every region in the answer. The response signature covers it,
   right after `asgard-protocol`, whenever it is present (§7.3).

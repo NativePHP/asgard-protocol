@@ -178,30 +178,39 @@ Fragments are held per component instance, so two screens with a region of
 the same name never share one.
 
 A region request goes to `{base}/render` ([§8](#8-transport)). Its body names the component's
-address ([§4](#4-addressing-components)), the region and the component's state ([§5.1](#51-client-state)):
+address ([§4](#4-addressing-components)), the regions it wants in `regions`, and the component's state
+([§5.1](#51-client-state)):
 
 ```json
-{"protocol":1,"component":"app.native.screens.home","region":"stats",
+{"protocol":1,"component":"app.native.screens.home","regions":["stats"],
  "state":{"period":"week"}}
 ```
+
+`regions` MUST be a list of at least one distinct name. It is a list even for
+one region, so there is one request shape and one answer shape.
 
 The protocol has no field for the platform, app version or anything else
 about the client. A client that wants the server to know such a thing sends
 it as part of the state, where it is checked and cached like any other value.
-The answer carries the
-region's fragment ([§9](#9-fragment-format)), its version token ([§8.1](#81-the-push-stream)) and when it was made
-([§8.2](#82-caching)):
+
+The answer has `fragments`, one part per region, keyed by region name. Each
+part carries the region's fragment ([§9](#9-fragment-format)), its version token ([§8.1](#81-the-push-stream)) and
+when it was made ([§8.2](#82-caching)):
 
 ```json
-{"protocol":1,"region":"stats","version":"q3V0bG9yZW1pcHN1",
- "made_at":1763150000123,
- "fragment":{"type":"text","props":{"text":"42 sales"}}}
+{"protocol":1,"fragments":{
+ "stats":{"version":"q3V0bG9yZW1pcHN1","made_at":1763150000123,
+  "fragment":{"type":"text","props":{"text":"42 sales"}}}}}
 ```
 
-A request may also declare the copies of this component's regions the
-client holds, in `cache`, and say it was sent because of a push, in `reason`.
-A server may then answer `{"protocol":1,"cached":true}` instead of a
-fragment. Both are in [§8.2](#82-caching).
+A server screen's part carries `chrome` too ([§12.2](#122-chrome)). A request may also
+declare the copies of this component's regions the client holds, in `cache`,
+and say it was sent because of a push, in `reason`. A server may then answer
+a part with `{"cached":true}` instead of a fragment. Both are in [§8.2](#82-caching).
+
+The server MUST check every name before it renders anything, and MUST answer
+an unknown one with `404 unknown_component`. The counters for every region's
+token MUST be read once, before any of them renders.
 
 An answer to a request that a newer one superseded, or for a component that
 has gone, MUST be dropped.
@@ -209,21 +218,15 @@ has gone, MUST be dropped.
 #### Several regions in one request
 
 When one component instance wants several regions at the same moment, it
-SHOULD send one request for all of them rather than one each. That happens on
-the first frame of a screen with several regions, on a refresh of all of a
+SHOULD name them all in one request rather than send one each. That happens
+on the first frame of a screen with several regions, on a refresh of all of a
 component's regions, and when several hints or signals for one instance land
-before it is drawn. The body names `regions` instead of `region`:
+before it is drawn:
 
 ```json
 {"protocol":1,"component":"app.native.screens.home","regions":["stats","feed"],
  "state":{"period":"week"}}
 ```
-
-`regions` MUST hold 1 to 16 distinct names, and a body MUST have `region` or
-`regions`, never both. A batch MUST NOT carry an `action`. The server MUST check
-every name before it renders anything, and MUST answer an unknown one with the
-same `404 unknown_component` a single region gets. The answer has one part
-per region, each shaped like a single answer's:
 
 ```json
 {"protocol":1,"fragments":{
@@ -232,20 +235,22 @@ per region, each shaped like a single answer's:
  "feed":{"cached":true}}}
 ```
 
-A server screen's part carries `chrome` too. A part is `{"cached":true}` when
-the server kept the client's own copy ([§8.2](#82-caching)). The counters for every
-region's token MUST be read once, before any of them renders.
+In the client each region in a request is still its own request, with its
+own timer and its own supersede rule. The client delivers each part as if it
+had been asked for alone. A region the answer left out MUST fail with reason
+`invalid`. When a request fails as a whole, every region in it fails and each
+failure is surfaced on its own.
 
-In the client each region in a batch is still its own request, with its own
-timer and its own supersede rule. The client delivers each part as if it had
-been asked for alone. A region the answer left out MUST fail with reason
-`invalid`. When a batch fails as a whole, every region in it fails and each
-failure is surfaced on its own. More than 16 regions MUST go out as several
-batches.
+**Limits.** A server that renders every region a request names, however many,
+lets one small request make it do any amount of work. A server SHOULD limit
+how many regions one request may name. A request over its limit gets
+`422 too_many_regions`, and nothing in it is rendered. A client that gets one
+MAY send the same regions again, split across smaller requests. The protocol
+does not fix the limit. The reference implementations allow 16.
 
 The server MUST NOT compress the answer unless every region in it allows it
-([§7.4](#74-encryption)). A batch that mixes a region with compression turned off and others is
-sent uncompressed, so the opted-out fragment is never in a compressed body.
+([§7.4](#74-encryption)). An answer that mixes a region with compression turned off and others
+is sent uncompressed, so the opted-out fragment is never in a compressed body.
 
 #### Collapsing
 
@@ -261,7 +266,7 @@ Every region request waits at most the client's region timeout for its
 answer. 15 seconds is RECOMMENDED as the default, and a client MAY let the app
 set its own per component, with 0 meaning no limit. The timeout covers the
 first fetch, a refresh, and a fetch a push stream signal or a refresh hint
-started ([§8.1](#81-the-push-stream), [§10.2](#102-server-actions-the-default)). A region in a batch has its own timer too. A hard
+started ([§8.1](#81-the-push-stream), [§10.2](#102-server-actions-the-default)). Each region in a request has its own timer. A hard
 failure, with one of the reasons in [§10.2](#102-server-actions-the-default), counts at once.
 
 A failed region MUST keep what it had. The client MUST surface the failure to
@@ -933,14 +938,14 @@ recognisably unchanged. Changes that land together, such as a navigation
 that unmounts one screen and mounts another, make one reopen.
 
 **Version tokens.** Reopening is frequent, so the server does not send every
-region again each time. Every region answer MUST carry a `version`: an opaque
+region again each time. Every part of a region answer MUST carry a `version`: an opaque
 token of up to 64 characters of `A-Z a-z 0-9 _ -`, derived from the push
 counters that region watches for that address, state and set of channels.
 
 ```json
-{"protocol":1,"region":"screen","version":"q3V0bG9yZW1pcHN1",
+{"protocol":1,"fragments":{"screen":{"version":"q3V0bG9yZW1pcHN1",
  "made_at":1763150000123,
- "fragment":{"type":"text","props":{"text":"Promo 1"}},"chrome":{}}
+ "fragment":{"type":"text","props":{"text":"Promo 1"}},"chrome":{}}}}
 ```
 
 The client keeps the latest token per instance and region, from render
@@ -1118,12 +1123,12 @@ shows it, so a server can stop a region being stored at all with
 
 #### Declaring a copy
 
-A render, batch, action, method call or upload request MAY carry `cache`:
+A render, action, method call or upload request MAY carry `cache`:
 the copies the client holds of regions of the request's component, keyed by
 region name (`screen` for a server screen).
 
 ```json
-{"protocol":1,"component":"app.native.screens.home","region":"stats",
+{"protocol":1,"component":"app.native.screens.home","regions":["stats"],
  "state":{"period":"week"},
  "cache":{"stats":{"made_at":1763150000123,"ttl":300}}}
 ```
@@ -1154,16 +1159,13 @@ render a copy that has little time left anyway, so the client gets a new
 `made_at` before its copy runs out. How little is up to the server (30
 seconds is a sensible default).
 
-A kept region is answered with `cached` in place of the fragment, and with no
-`region`, `version`, `chrome` or `max_age`. The copy keeps the ones it came
-with. A single answer is only:
+A kept region's part is `{"cached":true}`, in place of the fragment and with
+no `version`, `made_at`, `max_age` or `chrome`. The copy keeps the ones it
+came with:
 
 ```json
-{"protocol":1,"cached":true}
+{"protocol":1,"fragments":{"stats":{"cached":true}}}
 ```
-
-An action answer for its own region is the same, plus any `fragments` and
-`refresh` it carries ([§10.2](#102-server-actions-the-default)). A part of a `fragments` map is `{"cached":true}`.
 
 On `cached`, the client keeps what it shows and the copy it holds, unchanged.
 It counts as a good answer, like a fragment. If the client no longer holds
@@ -1178,7 +1180,7 @@ to tell when that happens, and to invalidate (below).
 
 #### Fetches caused by a push
 
-A render or batch request the client sends because of a push stream signal
+A render request the client sends because of a push stream signal
 ([§8.1](#81-the-push-stream)), including a covered screen drawing again after one arrived, SHOULD
 carry `"reason":"push"`. No other request carries `reason`, an action
 included, and `push` is its only value. A server MUST answer any other value
@@ -1191,7 +1193,7 @@ changed. A client can claim a push falsely, but all that gets it is a render.
 #### Invalidating
 
 A server MAY send the response header `Asgard-Cache: invalidate` on any
-sealed answer: render, batch, action, method call or upload, including one
+sealed answer: render, action, method call or upload, including one
 with no fragments in it. It tells the client that the fragments in this
 answer replace any copies it holds of those regions. An answer that carries
 it MUST render every region it answers and MUST NOT contain `cached`.
@@ -1563,16 +1565,19 @@ On a tap, the client sends the usual region request ([§3.1](#31-when-the-client
 member, to the same endpoint:
 
 ```json
-{"protocol": 1, "component": "app.native.screens.home", "region": "stats",
+{"protocol": 1, "component": "app.native.screens.home", "regions": ["stats"],
  "state": {"period": "week"},
  "action": {"call": "shuffle", "args": [3]}}
 ```
 
 The `action` object follows the rules of a slot: `call`, `args`, and no other
-members.
+members. A tap belongs to one region, so a request with an `action` MUST name
+exactly one, the **action's own region**, in `regions`. A server MUST answer
+any other count with `422 invalid_request`.
 
 The server restores the component from the state as for a render, runs the
-action, renders the region and answers with an ordinary fragment response.
+action, renders the action's own region and answers with an ordinary region
+answer.
 The client applies it the same way it applies a render.
 
 A server MUST run `call` only when the server component has explicitly
@@ -1605,19 +1610,18 @@ again. There are three cases.
 **Same component, inline.** The method names one or more regions of the same
 component. The server already has the component restored from the request's
 state, so after the method runs it renders those regions too, as the
-request's user, and puts them in the same answer. An action's own region MUST
-always be answered as before, and MUST be left out of `fragments` if the
-action names it as well.
+request's user, and adds them to `fragments` next to the action's own region,
+which is always there. A region named twice is rendered once.
 
 ```json
-{"protocol":1,"region":"greeting","version":"bG9yZW1pcHN1cTNW",
- "made_at":1763150000123,
- "fragment":{"type":"text","props":{"text":"Hi"}},
- "fragments":{"stats":{"version":"q3V0bG9yZW1pcHN1","made_at":1763150000123,
+{"protocol":1,"fragments":{
+ "greeting":{"version":"bG9yZW1pcHN1cTNW","made_at":1763150000123,
+  "fragment":{"type":"text","props":{"text":"Hi"}}},
+ "stats":{"version":"q3V0bG9yZW1pcHN1","made_at":1763150000123,
   "fragment":{"type":"text","props":{"text":"42"}}}}}
 ```
 
-Each part is shaped like a batch part ([§3.1](#31-when-the-client-asks)). Its token MUST be read after the
+Each part is shaped like any other part ([§3.1](#31-when-the-client-asks)). Its token MUST be read after the
 method runs and before anything renders. The client MUST paint a part only on
 the instance that sent the request, and only when that instance drew the
 region. It MUST skip a region with a request that went out after this one,
@@ -1633,9 +1637,9 @@ does not render it. It only names it, after checking the address and region
 exist:
 
 ```json
-{"protocol":1,"region":"greeting","version":"bG9yZW1pcHN1cTNW",
- "made_at":1763150000123,
- "fragment":{"type":"text","props":{"text":"Hi"}},
+{"protocol":1,"fragments":{
+ "greeting":{"version":"bG9yZW1pcHN1cTNW","made_at":1763150000123,
+  "fragment":{"type":"text","props":{"text":"Hi"}}}},
  "refresh":[{"component":"app.native.screens.inbox","region":"unread"}]}
 ```
 
@@ -1892,7 +1896,7 @@ a server cannot point a route at app code. Its body is a single region named
 `screen`, so everything in [§3](#3-regions), [§8.1](#81-the-push-stream) and [§10](#10-events) applies unchanged:
 
 - It asks for its fragment with the usual region request. `component` is
-  the screen address and `region` is `screen`.
+  the screen address and `regions` is `["screen"]`.
 - Its `state` is the route's parameters over its query string. Route values
   are strings on the wire. A server that wants a number or a boolean
   converts it: a numeric string to a number, and `"true"`, `"false"`, `"1"`
@@ -1906,14 +1910,14 @@ a server cannot point a route at app code. Its body is a single region named
   comes only from the `chrome` member, so a chrome type in the body is
   refused like any other ([§9.3](#93-what-a-fragment-may-not-contain)).
 
-The answer to a screen's render, action or push carries the chrome next to
-the fragment:
+The `screen` part of a screen's render or action answer, and a push event
+for it, carries the chrome next to the fragment:
 
 ```json
-{"protocol": 1, "region": "screen", "version": "q3V0bG9yZW1pcHN1",
+{"protocol": 1, "fragments": {"screen": {"version": "q3V0bG9yZW1pcHN1",
  "made_at": 1763150000123,
  "fragment": {"type": "text", "props": {"text": "Promo 7"}},
- "chrome": {"nav_bar": {"title": "Promo", "back": true}}}
+ "chrome": {"nav_bar": {"title": "Promo", "back": true}}}}}
 ```
 
 `chrome` MUST be an object for a screen, `{}` for none, and MUST be absent for
