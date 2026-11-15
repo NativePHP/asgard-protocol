@@ -199,7 +199,7 @@ it as part of the state, where it is checked and cached like any other value.
 
 The answer has `fragments`, one part per region, keyed by region name. Each
 part carries the region's fragment ([§9](#9-fragment-format)), its version token ([§8.1](#81-the-push-stream)) and
-when it was made ([§8.2](#82-caching)):
+when it was made ([§8.3](#83-caching)):
 
 ```json
 {
@@ -220,7 +220,7 @@ when it was made ([§8.2](#82-caching)):
 A server screen's part carries `chrome` too ([§12.2](#122-chrome)). A request may also
 declare the copies of this component's regions the client holds, in `cache`,
 and say it was sent because of a push, in `reason`. A server may then answer
-a part with `{"cached":true}` instead of a fragment. Both are in [§8.2](#82-caching).
+a part with `{"cached":true}` instead of a fragment. Both are in [§8.3](#83-caching).
 
 The server MUST check every name before it renders anything, and MUST answer
 an unknown one with `404 unknown_component`. The counters for every region's
@@ -675,7 +675,7 @@ answer.
 ;created=…;keyid="<session>";alg="hmac-sha256";tag="asgard/1"
 ```
 
-A response that carries `Asgard-Cache` ([§8.2](#82-caching)) MUST cover
+A response that carries `Asgard-Cache` ([§8.3](#83-caching)) MUST cover
 `"asgard-cache"` too, right after `"asgard-protocol"` and before
 `"signature";req;key="asgard"`. One that does not carry it MUST NOT list it.
 As for a request, the client works the list out from the headers it received
@@ -1059,7 +1059,8 @@ The part of a client that holds a long-lived connection is often not the part
 that checks signatures, and may not pass headers on, so a signature on them
 would protect nothing. Each event carries its own instead.
 
-**Events.** There are two, `signal` and `fragment`, sealed the same way:
+**Events.** There are three, `signal`, `fragment` and `patch` ([§8.2](#82-patches)),
+sealed the same way:
 
 ```
 id: 7
@@ -1079,7 +1080,7 @@ A `signal`'s message is
 compressed. A `fragment` event MUST be sent only for a shared region, and its
 message adds the fragment, with `chrome` too for a server screen ([§12.2](#122-chrome)):
 `{"protocol":1,"subscription":…,"region":…,"version":…,"made_at":…,"fragment":…}`,
-with `max_age` when the server sets one ([§8.2](#82-caching)).
+with `max_age` when the server sets one ([§8.3](#83-caching)).
 
 `body` is the message, compressed when `enc` says so, encrypted as `aes128gcm`
 under `enc_s` with the session id as `keyid`, a fresh salt per event and
@@ -1173,7 +1174,167 @@ have to be held by the application that renders. Something else could hold
 it later, as long as it can seal events: it would need the session keys, or a
 ticket the application issues for them.
 
-### 8.2 Caching
+### 8.2 Patches
+
+A signal makes every client fetch the whole region again. For a long list
+that grows a little at a time, such as a feed that gains an item at the top
+many times a second and keeps the newest thousand, that is a lot of work for
+a small change. A **patch** sends only the change: it adds nodes to, or
+removes nodes from, one list inside a region the client already holds.
+
+A patch is an optimization, never the only way to reach a state. Whatever a
+client can't apply, it fetches instead, as it would after a signal. So a lost,
+late or out-of-order patch costs a round trip and never leaves a wrong list
+on screen.
+
+**The target.** A patch names its target by node `key` ([§9.1](#91-node-shape)). The target is
+the first node in the region's tree, searched depth first in document order,
+whose `key` equals the target string, comparing keys as strings. A patch
+changes the target's `children` (an empty list when it has none), and nothing
+else in the tree.
+
+**Operations.** A patch is one of three:
+
+```json
+{
+  "op": "prepend",
+  "target": "items",
+  "nodes": [
+    {
+      "type": "text",
+      "key": "1043",
+      "props": {"text": "New item"}
+    }
+  ],
+  "keep": 1000
+}
+
+{
+  "op": "append",
+  "target": "items",
+  "nodes": [
+    {
+      "type": "text",
+      "key": "1044",
+      "props": {"text": "Older item"}
+    }
+  ],
+  "keep": 1000
+}
+
+{
+  "op": "remove",
+  "target": "items",
+  "keys": ["42", "43"]
+}
+```
+
+- `prepend` inserts `nodes`, in their order, before the target's first child.
+- `append` inserts `nodes`, in their order, after its last child.
+- `keep` is OPTIONAL on `prepend` and `append`: a positive integer. After
+  inserting, the target keeps at most this many children. A `prepend` drops
+  them from the end and an `append` from the start.
+- `remove` drops the target's direct children whose `key` is in `keys`. A
+  key that matches no child is ignored.
+- `nodes` holds 1 to 100 nodes. Each is an ordinary fragment node, and a
+  server MUST build it exactly as it would in a fragment: the rules of [§9.1](#91-node-shape),
+  [§9.3](#93-what-a-fragment-may-not-contain) and [§9.6](#96-media-urls), and callback slots that work as they would on a rendered
+  node ([§10.1](#101-callback-slots)).
+- `keys` holds 1 to 1,000 keys, each a string or an integer.
+- `keep`, when present, is at most 100,000.
+
+A server MUST NOT send a patch that breaks these rules. Other members the
+client does not know are ignored ([§5.3](#53-compatibility)).
+
+A patch MUST describe a change the server has already made to whatever the
+region renders from. A client fetches the whole region whenever it can't
+apply a patch, and also when it first loads the region and after it
+reconnects, so a full render at any time MUST give the tree the patches
+would have left.
+
+**Versions.** A patch moves the region's version exactly as the push that
+would otherwise have caused a signal. It carries `from`, the version token
+before it, and `version`, the token after. A server can only send a patch
+when it knows the change between two tokens was that patch and nothing else.
+So for each step between the token a stream last sent and the current one,
+it needs a record of the patch that made that step, and nothing else that
+feeds the token may have changed in between. When that holds, it sends one
+`patch` event per step, in order, and never merges them. When it does not,
+it sends what it would have sent without patches: a signal, or a fragment
+for a shared region. How long a server keeps those records is up to it.
+Without them, it sends signals.
+
+On connect the server compares tokens as before ([§8.1](#81-the-push-stream)) and sends a signal
+or a fragment, never a replay of the patches the client missed.
+
+**The event.** A `patch` event is sealed like the others ([§8.1](#81-the-push-stream)):
+
+```
+id: 8
+event: patch
+data: {"body":"<base64url>","enc":"identity","sig":"<base64url>"}
+```
+
+Its message is:
+
+```json
+{
+  "protocol": 1,
+  "subscription": "3f9a0c1d2e4b5a6c",
+  "region": "feed",
+  "from": "q3V0bG9yZW1pcHN1",
+  "version": "bG9yZW1pcHN1q3V0",
+  "patch": {
+    "op": "remove",
+    "target": "items",
+    "keys": ["42"]
+  }
+}
+```
+
+The rules in [§7.4](#74-encryption) for compressing responses apply to it: the 1024-byte
+minimum, the region's opt-out and the 8 MiB cap.
+
+The server renders a patch once, when it is pushed, and every stream that
+watches that region's counters gets the same nodes, whoever its user is. So
+a patch MUST NOT carry anything that some client watching the region should
+not see, just as a shared region must not ([§8.1](#81-the-push-stream)).
+
+**Applying it.** After the checks every event gets ([§8.1](#81-the-push-stream)), a client applies a
+patch to each instance of that address that asked with that subscription's
+state, one instance at a time. It MUST apply the patch only if all of these
+hold:
+
+- the instance is showing a tree it got from the server for that region, not
+  its placeholder;
+- the version token it holds for the region equals `from`;
+- the patch is one of the three operations and follows the rules above;
+- the target is found in the tree;
+- the tree the patch would leave still meets [§9.1](#91-node-shape) and [§9.3](#93-what-a-fragment-may-not-contain): no node of a
+  type the client can't render, no two siblings with the same key, and no
+  nesting deeper than 64 levels.
+
+Then it MUST change the tree as the operation says, repaint the region, and
+hold `version` as its token. A patch changes only the fragment. A server
+screen's chrome stays as it is.
+
+If any of them fails, the client MUST NOT change the tree, and MUST treat the
+event as a `signal` carrying the patch's `version`: the instance fetches the
+whole region, unless it already holds that version. A version mismatch, a
+missing tree or target, and a bad operation all end this way. The client
+SHOULD log why.
+
+Patches apply in the order they arrive, and each must match the token the
+one before it left. Applying one SHOULD cost no more than changing the held
+tree and repainting that region: no request, and no redraw of anything else.
+
+A patch is not an answer from the server in the sense of [§8.3](#83-caching). The copy a
+client cached for the region no longer describes what is on screen, so after
+a patch the client MUST NOT declare that copy in `cache`. The simplest way is
+to drop it. The next full answer is stored as usual. A patch never counts as
+an invalidation of a cached copy.
+
+### 8.3 Caching
 
 Whether to cache, what to keep, for how long and where is up to each
 implementation. A server may cache what it renders, and a client may keep
@@ -1905,7 +2066,7 @@ calls directly, rather than a tap in a fragment. It goes to its own endpoint,
 }
 ```
 
-The body MAY also carry `cache` ([§8.2](#82-caching)) for the regions the method might
+The body MAY also carry `cache` ([§8.3](#83-caching)) for the regions the method might
 draw again. It MUST NOT carry `reason`.
 
 A method call has its own endpoint because it is not about a region. It
@@ -2279,7 +2440,7 @@ there is no way to leave the app.
 1. Whether a region can be rendered without a bearer token at all, for public
    screens shown before sign-in.
 2. ~~Fragment caching.~~ Settled: caching is up to each implementation
-   ([§8.2](#82-caching)). Edge caches will not help, for the reasons in
+   ([§8.3](#83-caching)). Edge caches will not help, for the reasons in
    [rationale.md](rationale.md#why-fragments-are-not-cached-at-the-edge).
 3. ~~Navigation from inside a fragment.~~ Settled: a press slot can hold a
    navigation ([§12.4](#124-navigation)). Any route the app knows is a target, its own or a

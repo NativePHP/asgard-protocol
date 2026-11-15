@@ -9,11 +9,11 @@
   deliver new executable code, such as a client action or method call that
   downloads code and runs it.
 - The note comparing Asgard with a remote screen from a dev bridge is gone.
-- New §8.2 on caching. What to cache, and for how long, is up to each
+- New §8.3 on caching. What to cache, and for how long, is up to each
   implementation. Open question 2 is settled by it.
 - Every fragment carries `made_at`, the server's Unix time in milliseconds
-  when it was rendered, and may carry `max_age` in seconds (§8.2).
-- Region cache (§8.2). Render, batch, action, call and upload requests may
+  when it was rendered, and may carry `max_age` in seconds (§8.3).
+- Region cache (§8.3). Render, batch, action, call and upload requests may
   declare the copies the client holds in `cache`, as `{made_at, ttl}` per
   region. A server may answer a part with `{"cached":true}` for a fresh one instead of
   rendering it, and never for a region the request did not declare. A client
@@ -43,6 +43,13 @@
 - New response header `Asgard-Cache: invalidate`, which makes the server
   render every region in the answer. The response signature covers it,
   right after `asgard-protocol`, whenever it is present (§7.3).
+- New §8.2 on patches, and a third stream event, `patch`. A patch adds
+  nodes to the start or end of a list inside a region (`prepend`, `append`,
+  with an optional `keep`) or removes children by key (`remove`). It names
+  the list by node key and carries the version tokens before and after it,
+  `from` and `version`. A client that can't apply a patch, because its token
+  is not `from`, it holds no tree, the target is missing or the patch is bad,
+  MUST treat it as a signal and fetch the region. Caching moves to §8.3.
 
 ## Draft 3 (2026-11-14)
 
