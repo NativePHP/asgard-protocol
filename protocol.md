@@ -189,12 +189,19 @@ The protocol has no field for the platform, app version or anything else
 about the client. A client that wants the server to know such a thing sends
 it as part of the state, where it is checked and cached like any other value.
 The answer carries the
-region's fragment ([§9](#9-fragment-format)) and its version token ([§8.1](#81-the-push-stream)):
+region's fragment ([§9](#9-fragment-format)), its version token ([§8.1](#81-the-push-stream)) and when it was made
+([§8.2](#82-caching)):
 
 ```json
 {"protocol":1,"region":"stats","version":"q3V0bG9yZW1pcHN1",
+ "made_at":1763150000123,
  "fragment":{"type":"text","props":{"text":"42 sales"}}}
 ```
+
+A request may also declare the copies of this component's regions the
+client holds, in `cache`, and say it was sent because of a push, in `reason`.
+A server may then answer `{"protocol":1,"cached":true}` instead of a
+fragment. Both are in [§8.2](#82-caching).
 
 An answer to a request that a newer one superseded, or for a component that
 has gone, MUST be dropped.
@@ -220,11 +227,13 @@ per region, each shaped like a single answer's:
 
 ```json
 {"protocol":1,"fragments":{
- "stats":{"version":"q3V0bG9yZW1pcHN1","fragment":{"type":"spacer"}},
- "feed":{"version":"bG9yZW1pcHN1cTNW","fragment":{"type":"divider"}}}}
+ "stats":{"version":"q3V0bG9yZW1pcHN1","made_at":1763150000123,
+  "fragment":{"type":"spacer"}},
+ "feed":{"cached":true}}}
 ```
 
-A server screen's part carries `chrome` too. The counters for every
+A server screen's part carries `chrome` too. A part is `{"cached":true}` when
+the server kept the client's own copy ([§8.2](#82-caching)). The counters for every
 region's token MUST be read once, before any of them renders.
 
 In the client each region in a batch is still its own request, with its own
@@ -627,6 +636,13 @@ answer.
 ;created=…;keyid="<session>";alg="hmac-sha256";tag="asgard/1"
 ```
 
+A response that carries `Asgard-Cache` ([§8.2](#82-caching)) MUST cover
+`"asgard-cache"` too, right after `"asgard-protocol"` and before
+`"signature";req;key="asgard"`. One that does not carry it MUST NOT list it.
+As for a request, the client works the list out from the headers it received
+and refuses a signature whose list differs, so the header cannot be added or
+stripped on the way.
+
 `"signature";req;key="asgard"` pulls the request's own signature into the
 response's ([RFC 9421 §2.4](https://www.rfc-editor.org/rfc/rfc9421#section-2.4)). A response therefore only verifies against the
 request it answers, and a fragment captured from one request cannot be
@@ -923,6 +939,7 @@ counters that region watches for that address, state and set of channels.
 
 ```json
 {"protocol":1,"region":"screen","version":"q3V0bG9yZW1pcHN1",
+ "made_at":1763150000123,
  "fragment":{"type":"text","props":{"text":"Promo 1"}},"chrome":{}}
 ```
 
@@ -969,7 +986,8 @@ A `signal`'s message is
 `{"protocol":1,"subscription":…,"region":…,"version":…}` and MUST NOT be
 compressed. A `fragment` event MUST be sent only for a shared region, and its
 message adds the fragment, with `chrome` too for a server screen ([§12.2](#122-chrome)):
-`{"protocol":1,"subscription":…,"region":…,"version":…,"fragment":…}`.
+`{"protocol":1,"subscription":…,"region":…,"version":…,"made_at":…,"fragment":…}`,
+with `max_age` when the server sets one ([§8.2](#82-caching)).
 
 `body` is the message, compressed when `enc` says so, encrypted as `aes128gcm`
 under `enc_s` with the session id as `keyid`, a fresh salt per event and
@@ -1065,10 +1083,16 @@ ticket the application issues for them.
 
 ### 8.2 Caching
 
-Caching is up to each implementation. A server may cache what it renders, and
-a client may keep fragments, route lists or anything else it has received,
-for as long as it likes, in memory or on disk. This section adds no
-requirements.
+Whether to cache, what to keep, for how long and where is up to each
+implementation. A server may cache what it renders, and a client may keep
+fragments, route lists or anything else it has received, in memory or on
+disk.
+
+The protocol defines only what the two sides need to agree on: when a
+fragment was made, and a way for a client to tell the server which copies it
+holds, so the server can skip rendering one that is still good. A client that
+never declares a copy never gets one skipped. A server that never skips one
+is always correct.
 
 Whatever an implementation caches, the rest of this document still applies.
 A client that paints a stored fragment paints it as if it had just arrived,
@@ -1076,11 +1100,124 @@ so it is still checked against [§9.3](#93-what-a-fragment-may-not-contain) and 
 render across users is rendering a shared region and follows the rules for
 those in [§8.1](#81-the-push-stream).
 
-Two things are worth knowing before designing a cache. Every answer is
-encrypted for one session ([§7.4](#74-encryption)), so a shared HTTP cache in front of the
-server cannot usefully keep one, and QUERY requests are not cached at the edge
-in practice ([rationale.md](rationale.md#why-fragments-are-not-cached-at-the-edge)). And a fragment can show the user's own data,
-so a client that keeps fragments on disk is storing that data too.
+#### When a fragment was made
+
+Every fragment a server sends MUST carry `made_at`, next to `version`: an
+integer, the server's Unix time in milliseconds when it began rendering the
+fragment. That covers region and screen answers, every part of a `fragments`
+map, and `fragment` events on the push stream. It MAY also carry `max_age`,
+an integer number of seconds from 0 up: the longest the server will treat a
+copy of it as fresh. No `max_age` means the server sets no limit.
+
+A client that keeps a fragment MUST keep its `made_at` exactly as sent, and
+its `version` and `chrome` with it. It picks its own TTL for each region. The
+**effective TTL** of a copy is the smaller of that and `max_age`. A client
+MUST NOT keep a fragment whose effective TTL is 0 beyond the instance that
+shows it, so a server can stop a region being stored at all with
+`"max_age":0`.
+
+#### Declaring a copy
+
+A render, batch, action, method call or upload request MAY carry `cache`:
+the copies the client holds of regions of the request's component, keyed by
+region name (`screen` for a server screen).
+
+```json
+{"protocol":1,"component":"app.native.screens.home","region":"stats",
+ "state":{"period":"week"},
+ "cache":{"stats":{"made_at":1763150000123,"ttl":300}}}
+```
+
+`cache` MUST be an object of at most 64 entries. Each entry MUST have exactly
+`made_at`, a positive integer, and `ttl`, an integer from 0 to 31536000.
+`made_at` is the server's own value from the copy. `ttl` is the copy's
+effective TTL in seconds. A server MUST answer a malformed `cache` with
+`422 invalid_request`, and ignores a name that is not a region of the
+component. The push stream and the route list never carry `cache`.
+
+A client SHOULD declare only a copy made for the same address, region and
+state as the request, and whose age by its own clock is within its effective
+TTL. It MAY paint an older copy while the request is in flight, but MUST NOT
+declare one.
+
+#### Keeping the client's copy
+
+A declared copy is **fresh** when the time since `made_at` by the server's
+clock is at least -60 seconds (a client's `made_at` can be ahead of a server
+whose clock is behind the one that made it) and less than the smaller of
+`ttl` and the server's current `max_age` for that region.
+
+For a region it is about to render, a server MAY skip a fresh copy and
+answer that the client should keep it. It MUST NOT do so for a region the
+request did not declare, or for a copy that is not fresh. A server SHOULD
+render a copy that has little time left anyway, so the client gets a new
+`made_at` before its copy runs out. How little is up to the server (30
+seconds is a sensible default).
+
+A kept region is answered with `cached` in place of the fragment, and with no
+`region`, `version`, `chrome` or `max_age`. The copy keeps the ones it came
+with. A single answer is only:
+
+```json
+{"protocol":1,"cached":true}
+```
+
+An action answer for its own region is the same, plus any `fragments` and
+`refresh` it carries ([§10.2](#102-server-actions-the-default)). A part of a `fragments` map is `{"cached":true}`.
+
+On `cached`, the client keeps what it shows and the copy it holds, unchanged.
+It counts as a good answer, like a fragment. If the client no longer holds
+the copy (it was cleared while the request was in flight), it MUST send that
+region's request once more, without declaring it. A `cached` answer for a
+region the request did not declare is invalid, with reason `invalid`
+([§10.2](#102-server-actions-the-default)).
+
+A server that skips a copy after something changed what the region shows
+leaves the client showing the old one. A server that keeps copies needs a way
+to tell when that happens, and to invalidate (below).
+
+#### Fetches caused by a push
+
+A render or batch request the client sends because of a push stream signal
+([§8.1](#81-the-push-stream)), including a covered screen drawing again after one arrived, SHOULD
+carry `"reason":"push"`. No other request carries `reason`, an action
+included, and `push` is its only value. A server MUST answer any other value
+with `422 invalid_request`.
+
+A server need not act on it. It is there so a server can choose to render a
+region it would otherwise keep, since a push usually means the region has
+changed. A client can claim a push falsely, but all that gets it is a render.
+
+#### Invalidating
+
+A server MAY send the response header `Asgard-Cache: invalidate` on any
+sealed answer: render, batch, action, method call or upload, including one
+with no fragments in it. It tells the client that the fragments in this
+answer replace any copies it holds of those regions. An answer that carries
+it MUST render every region it answers and MUST NOT contain `cached`.
+
+The header is covered by the response signature whenever it is present
+([§7.3](#73-signatures)). Its value is one lowercase word of up to 32 letters, and
+`invalidate` is the only one defined. A client ignores any other value.
+Unsigned answers never carry it.
+
+What the client does with the replaced copies, beyond painting the new
+fragments, is up to it. It might let the app decide whether to show the new
+fragment straight away.
+
+#### Before designing a cache
+
+Every answer is encrypted for one session ([§7.4](#74-encryption)), so a shared HTTP cache in
+front of the server cannot usefully keep one, and QUERY requests are not
+cached at the edge in practice ([rationale.md](rationale.md#why-fragments-are-not-cached-at-the-edge)). A fragment can show the
+user's own data, so a client that keeps fragments on disk is storing that
+data too, and SHOULD clear it when the user signs out.
+
+*Implementer note.* In the reference implementations, a client sets a TTL in
+its configuration and per region, and a server sets a max age the same way.
+The server lets the app look at each declared copy before it is skipped, for
+example to compare `made_at` with when the data last changed, and invalidate
+the answer if it is older.
 
 ## 9. Fragment format
 
@@ -1474,8 +1611,9 @@ action names it as well.
 
 ```json
 {"protocol":1,"region":"greeting","version":"bG9yZW1pcHN1cTNW",
+ "made_at":1763150000123,
  "fragment":{"type":"text","props":{"text":"Hi"}},
- "fragments":{"stats":{"version":"q3V0bG9yZW1pcHN1",
+ "fragments":{"stats":{"version":"q3V0bG9yZW1pcHN1","made_at":1763150000123,
   "fragment":{"type":"text","props":{"text":"42"}}}}}
 ```
 
@@ -1496,6 +1634,7 @@ exist:
 
 ```json
 {"protocol":1,"region":"greeting","version":"bG9yZW1pcHN1cTNW",
+ "made_at":1763150000123,
  "fragment":{"type":"text","props":{"text":"Hi"}},
  "refresh":[{"component":"app.native.screens.inbox","region":"unread"}]}
 ```
@@ -1606,6 +1745,9 @@ calls directly, rather than a tap in a fragment. It goes to its own endpoint,
  "args": [], "state": {"roll": 0}}
 ```
 
+The body MAY also carry `cache` ([§8.2](#82-caching)) for the regions the method might
+draw again. It MUST NOT carry `reason`.
+
 Its own endpoint rather than render with another member, because nothing
 about it is a region: there is no region to name, and the answer is a
 different shape. Folding it into render would have made every render check
@@ -1628,7 +1770,7 @@ is worked out, and `refresh`, the hints for other components:
 
 ```json
 {"protocol": 1, "delta": {"roll": 4},
- "fragments": {"stats": {"version": "q3V0bG9yZW1pcHN1",
+ "fragments": {"stats": {"version": "q3V0bG9yZW1pcHN1", "made_at": 1763150000123,
   "fragment": {"type": "text", "props": {"text": "4"}}}}}
 ```
 
@@ -1769,6 +1911,7 @@ the fragment:
 
 ```json
 {"protocol": 1, "region": "screen", "version": "q3V0bG9yZW1pcHN1",
+ "made_at": 1763150000123,
  "fragment": {"type": "text", "props": {"text": "Promo 7"}},
  "chrome": {"nav_bar": {"title": "Promo", "back": true}}}
 ```

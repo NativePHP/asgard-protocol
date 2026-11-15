@@ -9,8 +9,19 @@
   deliver new executable code, such as a client action or method call that
   downloads code and runs it.
 - The note comparing Asgard with a remote screen from a dev bridge is gone.
-- New §8.2 on caching: it is up to each implementation, and adds no
-  requirements. Open question 2 is settled by it.
+- New §8.2 on caching. What to cache, and for how long, is up to each
+  implementation. Open question 2 is settled by it.
+- Every fragment carries `made_at`, the server's Unix time in milliseconds
+  when it was rendered, and may carry `max_age` in seconds (§8.2).
+- Region cache (§8.2). Render, batch, action, call and upload requests may
+  declare the copies the client holds in `cache`, as `{made_at, ttl}` per
+  region. A server may answer `{"cached":true}` for a fresh one instead of
+  rendering it, and never for a region the request did not declare. A client
+  that no longer holds the copy asks once more without declaring it.
+- Render and batch requests sent because of a push carry `"reason":"push"`.
+- New response header `Asgard-Cache: invalidate`, which makes the server
+  render every region in the answer. The response signature covers it,
+  right after `asgard-protocol`, whenever it is present (§7.3).
 
 ## Draft 3 (2026-11-14)
 
