@@ -1231,16 +1231,26 @@ else in the tree.
 
 - `prepend` inserts `nodes`, in their order, before the target's first child.
 - `append` inserts `nodes`, in their order, after its last child.
-- `keep` is OPTIONAL on `prepend` and `append`: a positive integer. After
-  inserting, the target keeps at most this many children. A `prepend` drops
-  them from the end and an `append` from the start.
+- Before a `prepend` or `append` inserts anything, the client MUST remove
+  every existing child of the target whose `key` equals the key of one of
+  the inserted nodes, comparing keys as strings. A server can read a
+  region's version before the app saves a change and pushes the patch for
+  it, so a full answer may already hold an item that the next patch adds
+  again. This rule makes that harmless: the item ends up once, where the
+  patch puts it.
+- `keep` is OPTIONAL on `prepend` and `append`: a positive integer, absent
+  when not set. After inserting, the target keeps at most this many
+  children. A `prepend` drops them from the end and an `append` from the
+  start.
 - `remove` drops the target's direct children whose `key` is in `keys`. A
   key that matches no child is ignored.
 - `nodes` holds 1 to 100 nodes. Each is an ordinary fragment node, and a
   server MUST build it exactly as it would in a fragment: the rules of [§9.1](#91-node-shape),
   [§9.3](#93-what-a-fragment-may-not-contain) and [§9.6](#96-media-urls), and callback slots that work as they would on a rendered
   node ([§10.1](#101-callback-slots)).
-- `keys` holds 1 to 1,000 keys, each a string or an integer.
+- `target` is a string, and `keys` holds 1 to 1,000 strings. A node's own
+  `key` inside `nodes` may still be a string or an integer, as in any
+  fragment ([§9.1](#91-node-shape)).
 - `keep`, when present, is at most 100,000.
 
 A server MUST NOT send a patch that breaks these rules. Other members the
@@ -1254,15 +1264,29 @@ would have left.
 
 **Versions.** A patch moves the region's version exactly as the push that
 would otherwise have caused a signal. It carries `from`, the version token
-before it, and `version`, the token after. A server can only send a patch
-when it knows the change between two tokens was that patch and nothing else.
-So for each step between the token a stream last sent and the current one,
-it needs a record of the patch that made that step, and nothing else that
-feeds the token may have changed in between. When that holds, it sends one
-`patch` event per step, in order, and never merges them. When it does not,
-it sends what it would have sent without patches: a signal, or a fragment
-for a shared region. How long a server keeps those records is up to it.
-Without them, it sends signals.
+before it, and `version`, the token after. Both are the tokens of the
+subscription the event is for ([§8.1](#81-the-push-stream)). A token depends on the channels that
+subscription watches, so the same patch can carry different tokens on
+different subscriptions.
+
+A server can only send a patch when it knows the change between two tokens
+was that patch and nothing else. So it MUST send patches only when it can
+account for every version step since the token this stream last sent for
+the region, with a record of the patch that made each step. When it can, it
+sends one `patch` event per step, in order, and never merges them. When it
+can't, it MUST send what it would have sent without patches: a signal, or a
+fragment for a shared region. That includes:
+
+- a step it has no record of, because the record has expired or the step was
+  an ordinary push;
+- two different counters behind the token moving between two reads, such as
+  one for every subscriber and one for a channel, since the records can't
+  say how those steps interleave;
+- a patch with a node of a type the client did not list at the handshake
+  ([§6.1](#61-handshake)).
+
+How long a server keeps those records is up to it. Without them, it sends
+signals.
 
 On connect the server compares tokens as before ([§8.1](#81-the-push-stream)) and sends a signal
 or a fragment, never a replay of the patches the client missed.
@@ -1310,8 +1334,9 @@ hold:
 - the version token it holds for the region equals `from`;
 - the patch is one of the three operations and follows the rules above;
 - the target is found in the tree;
-- the tree the patch would leave still meets [§9.1](#91-node-shape) and [§9.3](#93-what-a-fragment-may-not-contain): no node of a
-  type the client can't render, no two siblings with the same key, and no
+- the tree the patch would leave, after removing the children that share
+  an inserted node's key, still meets [§9.1](#91-node-shape) and [§9.3](#93-what-a-fragment-may-not-contain): no node of a type the
+  client can't render, no two inserted nodes with the same key, and no
   nesting deeper than 64 levels.
 
 Then it MUST change the tree as the operation says, repaint the region, and

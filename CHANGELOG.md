@@ -50,6 +50,12 @@
   `from` and `version`. A client that can't apply a patch, because its token
   is not `from`, it holds no tree, the target is missing or the patch is bad,
   MUST treat it as a signal and fetch the region. Caching moves to §8.3.
+- A `prepend` or `append` first removes any child with the same key as an
+  inserted node, so an item already in a full answer is not shown twice.
+  `target` and `keys` are strings, and `from` and `version` are the
+  subscription's own tokens. A server sends patches only when it can account
+  for every version step since the token it last sent, and a signal or
+  fragment otherwise (§8.2).
 
 ## Draft 3 (2026-11-14)
 
