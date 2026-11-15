@@ -284,9 +284,10 @@ for one region that gets it fails with reason `server` ([§10.2](#102-server-act
 does not fix the limit, or the order in which a server checks a request with
 more than one problem. The reference implementations allow 16.
 
-The server MUST NOT compress the answer unless every region in it allows it
-([§7.4](#74-encryption)). An answer that mixes a region with compression turned off and others
-is sent uncompressed, so the opted-out fragment is never in a compressed body.
+The server MUST NOT compress the answer unless its `delta` is `{}` and every
+region in it allows compression ([§7.4](#74-encryption)). An answer that mixes a region with
+compression turned off and others is sent uncompressed, so the opted-out
+fragment is never in a compressed body.
 
 #### Collapsing
 
@@ -440,16 +441,24 @@ the server did.
 
 - `delta` MUST be present, and MUST be an object. It is `{}` when nothing
   changed.
-- It holds the members of the state whose values, after everything the
-  server ran for the request, differ from what the client sent. A member set
-  for the first time counts. A server MAY also include members it works out
-  afresh on every request, even when their values did not change.
+- It holds the members of the state that changed while the server handled
+  the request, compared with the state as the server restored it from the
+  request. A member set for the first time counts.
+- A server may also supply members of its own on every request: values it
+  works out from other state, or state it shares across the whole app. In
+  the answer to an action, a method call or an upload, the delta carries
+  every such member. In the answer to a region request with no action (a
+  single region, a batch or a server screen), it carries one only when the
+  client sent that member with a different value, and leaves out any the
+  client did not send at all. That keeps a plain render's delta empty in the
+  usual case, so the answer can still be compressed ([§7.4](#74-encryption)).
 - Each value MUST be a plain JSON value, or the answer is `500 invalid_delta`.
 - An answer has one `delta` for the whole request, however many regions it
   renders, since a request is for one component and one state.
 
-The server renders after the state has settled, so the fragments in an
-answer always match its delta. The client MUST apply the delta before it
+The server works out the delta after it has rendered every region in the
+answer, on every answer, so a member changed while a region renders is in
+it, and the fragments always match the delta. The client MUST apply the delta before it
 paints any fragment in the answer. It MUST apply each member under
 compare-and-set: only if it still holds the value it sent. The delta may
 change members the app does not let its own UI write. That restriction binds
@@ -473,16 +482,18 @@ the names of state members the server may read but MUST NOT change.
 - A client SHOULD leave it out when it is empty. A member the client works
   out from other state, rather than holds, SHOULD be in it.
 - A server MUST NOT put a read-only member in `delta`, even when something
-  it ran changed that member. It SHOULD make that visible to the developer,
-  by logging it or, in development, by failing the request with
-  `500 read_only_changed`.
+  it ran changed that member. It SHOULD make that visible to the developer:
+  in development by failing the request with `500 read_only_changed`, and
+  otherwise by leaving the member out and logging it.
+- A member the server supplies itself never overwrites a read-only member of
+  the same name. That is not an error.
 - A client MUST ignore a member of `delta` that its request named in
   `read_only`, and SHOULD log it.
 
 `read_only` limits what comes back, not what the server may read. A
 read-only member is still sent in `state`, and is still untrusted input
-([§5.1](#51-client-state)). A stream subscription carries no `read_only`, since the stream
-sends no delta.
+([§5.1](#51-client-state)). A stream subscription MAY carry `read_only`, but it has no effect
+there, since the stream sends no delta.
 
 ## 6. Sessions
 
@@ -844,10 +855,15 @@ them. A 200-row list fragment of about 52 KB went over the wire as 2.4 KB.
   allows: at least one major CDN rewrites that header to `aes128gcm` and
   passes the body through unchanged, so the signature fails and the response
   is lost. A header of Asgard's own is left alone.
-- Only a region's fragment MAY be compressed, and only when it is at least
-  1024 bytes. Below that the saving is too small to matter. An action's answer
-  is the region's fragment, so it follows the region. Errors MUST NOT be
-  compressed: they are small and may echo what the client sent.
+- Only a region answer MAY be compressed, and only when it is at least
+  1024 bytes. Below that the saving is too small to matter. A region or
+  action answer MAY be compressed only when its `delta` is `{}` ([§5.4](#54-state-sent-back)) and
+  every region in it allows compression. A delta mixes the server's values
+  with text the client chose, and a region's choice about compression says
+  nothing about what is in the delta, so an answer with a delta in it is
+  sent uncompressed. Method call and upload answers MUST NOT be compressed.
+  Errors MUST NOT be compressed: they are small and may echo what the client
+  sent.
 - The gzip member ([RFC 1952](https://www.rfc-editor.org/rfc/rfc1952)) MUST have a fixed header (no file name, mtime
   0, OS 255) and MUST be deflated at level 6, so the same input gives the same
   bytes on any server.
@@ -2087,10 +2103,11 @@ for a screen that has closed, does nothing.
 sent the request.
 
 `refresh` MUST be present only when the method asked for it. In a method
-call's answer, `fragments` MUST be present only when the method or the
-request asked for regions ([§10.5](#105-method-calls)).
-An answer that carries inline regions MUST NOT be compressed unless its own region
-and all of them allow it ([§7.4](#74-encryption)).
+call's answer, `fragments` and `refresh` are left out when they would be
+empty ([§10.5](#105-method-calls)).
+An action's answer is compressed only under the rule for any region answer
+([§3.1](#31-when-the-client-asks)): its `delta` is `{}` and every region in it, its own and the
+inline ones, allows compression ([§7.4](#74-encryption)).
 
 #### Timeouts and failures
 
@@ -2208,15 +2225,18 @@ method of that name, and answers with `delta` ([§5.4](#54-state-sent-back)):
 ```
 
 The client decides which of the component's regions a call redraws, if any,
-by naming them in `regions`. The server checks those names as it would a
-region request's ([§3.1](#31-when-the-client-asks)): an unknown one is `404 unknown_component`, and its
-limit on regions per request applies. With no `regions`, a call changes
-state only, unless the method itself asks for more.
+by naming them in `regions`: a list of distinct region names, where an empty
+list means none. The server checks it before the method runs. A name that is
+not a region of the component is `422 invalid_request`, and a list over the
+server's limit on regions per request ([§3.1](#31-when-the-client-asks)) is `422 too_many_regions`. In
+either case the method does not run. With no `regions`, a call changes state
+only, unless the method itself asks for more.
 
 The answer carries `fragments` for the regions the request named and the
 regions of this component the method asked for ([§10.2](#102-server-actions-the-default)), each rendered once,
-after the delta is worked out. It carries `refresh` for the method's hints
-for other components:
+before the delta is worked out. A region the client declared a fresh copy of
+may come back as `{"cached":true}` ([§8.3](#83-caching)). It carries `refresh` for the
+method's hints for other components. Both are left out when empty:
 
 ```json
 {
@@ -2238,8 +2258,7 @@ for other components:
 The client MUST apply the delta first, then paint the regions on the calling
 instance under the rules of [§10.2](#102-server-actions-the-default), then handle the hints, and only then hand
 the result to the app code that made the call. A call answer MUST NOT be
-compressed, fragments or not, since the delta can mix the server's values with
-text the client chose ([§7.4](#74-encryption)).
+compressed, fragments or not, even with an empty delta ([§7.4](#74-encryption)).
 
 A server MUST run `method` only under the rules of [§10.2](#102-server-actions-the-default). The method must be
 on the same list a tap's action is checked against. Otherwise the server

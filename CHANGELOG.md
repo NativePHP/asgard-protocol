@@ -68,7 +68,11 @@
   `read_only` (§5.4). The server never puts them in a delta, and the client
   ignores them if it does.
 - A method call or upload may name `regions` to draw again after the method
-  runs (§10.5), as well as any the method asks for.
+  runs (§10.5), as well as any the method asks for. An unknown name is
+  `422 invalid_request`, and the method does not run.
+- A region or action answer may be compressed only when its delta is `{}`
+  and every region in it allows it. An action's answer no longer simply
+  follows its region (§7.4).
 
 ## Draft 3 (2026-11-14)
 
