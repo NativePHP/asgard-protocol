@@ -182,8 +182,12 @@ address ([§4](#4-addressing-components)), the regions it wants in `regions`, an
 ([§5.1](#51-client-state)):
 
 ```json
-{"protocol":1,"component":"app.native.screens.home","regions":["stats"],
- "state":{"period":"week"}}
+{
+  "protocol": 1,
+  "component": "app.native.screens.home",
+  "regions": ["stats"],
+  "state": {"period": "week"}
+}
 ```
 
 `regions` MUST be a list of at least one distinct name. It is a list even for
@@ -198,9 +202,19 @@ part carries the region's fragment ([§9](#9-fragment-format)), its version toke
 when it was made ([§8.2](#82-caching)):
 
 ```json
-{"protocol":1,"fragments":{
- "stats":{"version":"q3V0bG9yZW1pcHN1","made_at":1763150000123,
-  "fragment":{"type":"text","props":{"text":"42 sales"}}}}}
+{
+  "protocol": 1,
+  "fragments": {
+    "stats": {
+      "version": "q3V0bG9yZW1pcHN1",
+      "made_at": 1763150000123,
+      "fragment": {
+        "type": "text",
+        "props": {"text": "42 sales"}
+      }
+    }
+  }
+}
 ```
 
 A server screen's part carries `chrome` too ([§12.2](#122-chrome)). A request may also
@@ -224,15 +238,26 @@ component's regions, and when several hints or signals for one instance land
 before it is drawn:
 
 ```json
-{"protocol":1,"component":"app.native.screens.home","regions":["stats","feed"],
- "state":{"period":"week"}}
+{
+  "protocol": 1,
+  "component": "app.native.screens.home",
+  "regions": ["stats", "feed"],
+  "state": {"period": "week"}
+}
 ```
 
 ```json
-{"protocol":1,"fragments":{
- "stats":{"version":"q3V0bG9yZW1pcHN1","made_at":1763150000123,
-  "fragment":{"type":"spacer"}},
- "feed":{"cached":true}}}
+{
+  "protocol": 1,
+  "fragments": {
+    "stats": {
+      "version": "q3V0bG9yZW1pcHN1",
+      "made_at": 1763150000123,
+      "fragment": {"type": "spacer"}
+    },
+    "feed": {"cached": true}
+  }
+}
 ```
 
 In the client each region in a request is still its own request, with its
@@ -892,11 +917,24 @@ server regions on screen holds no stream at all.
 lists every subscription the client wants:
 
 ```json
-{"protocol":1,"subscriptions":[
- {"id":"3f9a0c1d2e4b5a6c","component":"promos.show","regions":["screen"],
-  "state":{"id":"1"},"versions":{"screen":"q3V0bG9yZW1pcHN1"}},
- {"id":"8b2d77e01c9f4a35","component":"promos.show","regions":["screen"],
-  "state":{"id":"2"}}]}
+{
+  "protocol": 1,
+  "subscriptions": [
+    {
+      "id": "3f9a0c1d2e4b5a6c",
+      "component": "promos.show",
+      "regions": ["screen"],
+      "state": {"id": "1"},
+      "versions": {"screen": "q3V0bG9yZW1pcHN1"}
+    },
+    {
+      "id": "8b2d77e01c9f4a35",
+      "component": "promos.show",
+      "regions": ["screen"],
+      "state": {"id": "2"}
+    }
+  ]
+}
 ```
 
 - `subscriptions` MUST hold 1 to 16 subscriptions.
@@ -943,9 +981,20 @@ token of up to 64 characters of `A-Z a-z 0-9 _ -`, derived from the push
 counters that region watches for that address, state and set of channels.
 
 ```json
-{"protocol":1,"fragments":{"screen":{"version":"q3V0bG9yZW1pcHN1",
- "made_at":1763150000123,
- "fragment":{"type":"text","props":{"text":"Promo 1"}},"chrome":{}}}}
+{
+  "protocol": 1,
+  "fragments": {
+    "screen": {
+      "version": "q3V0bG9yZW1pcHN1",
+      "made_at": 1763150000123,
+      "fragment": {
+        "type": "text",
+        "props": {"text": "Promo 1"}
+      },
+      "chrome": {}
+    }
+  }
+}
 ```
 
 The client keeps the latest token per instance and region, from render
@@ -1128,9 +1177,15 @@ the copies the client holds of regions of the request's component, keyed by
 region name (`screen` for a server screen).
 
 ```json
-{"protocol":1,"component":"app.native.screens.home","regions":["stats"],
- "state":{"period":"week"},
- "cache":{"stats":{"made_at":1763150000123,"ttl":300}}}
+{
+  "protocol": 1,
+  "component": "app.native.screens.home",
+  "regions": ["stats"],
+  "state": {"period": "week"},
+  "cache": {
+    "stats": {"made_at": 1763150000123, "ttl": 300}
+  }
+}
 ```
 
 `cache` MUST be an object of at most 64 entries. Each entry MUST have exactly
@@ -1164,7 +1219,10 @@ no `version`, `made_at`, `max_age` or `chrome`. The copy keeps the ones it
 came with:
 
 ```json
-{"protocol":1,"fragments":{"stats":{"cached":true}}}
+{
+  "protocol": 1,
+  "fragments": {"stats": {"cached": true}}
+}
 ```
 
 On `cached`, the client keeps what it shows and the copy it holds, unchanged.
@@ -1253,7 +1311,10 @@ nodes side by side in the region, in order, as children of the region.
   "props": {"a11yLabel": "Sales total"},
   "on_press": {"call": "select", "args": ["a"]},
   "children": [
-    {"type": "text", "props": {"text": "42"}}
+    {
+      "type": "text",
+      "props": {"text": "42"}
+    }
   ]
 }
 ```
@@ -1531,8 +1592,17 @@ The slots are `on_press`, `on_long_press`, `on_double_tap`, `on_change` and
 `on_submit`. Each MUST hold an object, never a string:
 
 ```json
-{"on_press": {"call": "shuffle", "args": [3]}}
-{"on_press": {"call": "celebrate", "args": [], "target": "client"}}
+{
+  "on_press": {"call": "shuffle", "args": [3]}
+}
+
+{
+  "on_press": {
+    "call": "celebrate",
+    "args": [],
+    "target": "client"
+  }
+}
 ```
 
 - `call` MUST be a method name matching `^[A-Za-z_][A-Za-z0-9_]{0,99}$`.
@@ -1544,7 +1614,14 @@ The slots are `on_press`, `on_long_press`, `on_double_tap`, `on_change` and
 A slot may instead move the app ([§12.4](#124-navigation)):
 
 ```json
-{"on_press": {"navigate": "/promos/42", "replace": true, "transition": "fade"}}
+{
+  "on_press": {
+    "navigate": "/promos/42",
+    "replace": true,
+    "transition": "fade"
+  }
+}
+
 {"on_press": {"back": true}}
 ```
 
@@ -1565,9 +1642,13 @@ On a tap, the client sends the usual region request ([§3.1](#31-when-the-client
 member, to the same endpoint:
 
 ```json
-{"protocol": 1, "component": "app.native.screens.home", "regions": ["stats"],
- "state": {"period": "week"},
- "action": {"call": "shuffle", "args": [3]}}
+{
+  "protocol": 1,
+  "component": "app.native.screens.home",
+  "regions": ["stats"],
+  "state": {"period": "week"},
+  "action": {"call": "shuffle", "args": [3]}
+}
 ```
 
 The `action` object follows the rules of a slot: `call`, `args`, and no other
@@ -1614,11 +1695,27 @@ request's user, and adds them to `fragments` next to the action's own region,
 which is always there. A region named twice is rendered once.
 
 ```json
-{"protocol":1,"fragments":{
- "greeting":{"version":"bG9yZW1pcHN1cTNW","made_at":1763150000123,
-  "fragment":{"type":"text","props":{"text":"Hi"}}},
- "stats":{"version":"q3V0bG9yZW1pcHN1","made_at":1763150000123,
-  "fragment":{"type":"text","props":{"text":"42"}}}}}
+{
+  "protocol": 1,
+  "fragments": {
+    "greeting": {
+      "version": "bG9yZW1pcHN1cTNW",
+      "made_at": 1763150000123,
+      "fragment": {
+        "type": "text",
+        "props": {"text": "Hi"}
+      }
+    },
+    "stats": {
+      "version": "q3V0bG9yZW1pcHN1",
+      "made_at": 1763150000123,
+      "fragment": {
+        "type": "text",
+        "props": {"text": "42"}
+      }
+    }
+  }
+}
 ```
 
 Each part is shaped like any other part ([§3.1](#31-when-the-client-asks)). Its token MUST be read after the
@@ -1637,10 +1734,25 @@ does not render it. It only names it, after checking the address and region
 exist:
 
 ```json
-{"protocol":1,"fragments":{
- "greeting":{"version":"bG9yZW1pcHN1cTNW","made_at":1763150000123,
-  "fragment":{"type":"text","props":{"text":"Hi"}}}},
- "refresh":[{"component":"app.native.screens.inbox","region":"unread"}]}
+{
+  "protocol": 1,
+  "fragments": {
+    "greeting": {
+      "version": "bG9yZW1pcHN1cTNW",
+      "made_at": 1763150000123,
+      "fragment": {
+        "type": "text",
+        "props": {"text": "Hi"}
+      }
+    }
+  },
+  "refresh": [
+    {
+      "component": "app.native.screens.inbox",
+      "region": "unread"
+    }
+  ]
+}
 ```
 
 A hint for a whole component covers hints for its regions, and an answer
@@ -1745,8 +1857,13 @@ calls directly, rather than a tap in a fragment. It goes to its own endpoint,
 ([§7.3](#73-signatures)):
 
 ```json
-{"protocol": 1, "component": "app.native.screens.home", "method": "roll",
- "args": [], "state": {"roll": 0}}
+{
+  "protocol": 1,
+  "component": "app.native.screens.home",
+  "method": "roll",
+  "args": [],
+  "state": {"roll": 0}
+}
 ```
 
 The body MAY also carry `cache` ([§8.2](#82-caching)) for the regions the method might
@@ -1773,9 +1890,20 @@ A method that asked for other regions to be drawn again ([§10.2](#102-server-ac
 is worked out, and `refresh`, the hints for other components:
 
 ```json
-{"protocol": 1, "delta": {"roll": 4},
- "fragments": {"stats": {"version": "q3V0bG9yZW1pcHN1", "made_at": 1763150000123,
-  "fragment": {"type": "text", "props": {"text": "4"}}}}}
+{
+  "protocol": 1,
+  "delta": {"roll": 4},
+  "fragments": {
+    "stats": {
+      "version": "q3V0bG9yZW1pcHN1",
+      "made_at": 1763150000123,
+      "fragment": {
+        "type": "text",
+        "props": {"text": "4"}
+      }
+    }
+  }
+}
 ```
 
 The client MUST apply the delta first, then paint the regions on the calling
@@ -1816,9 +1944,16 @@ the rest             the file, exactly `size` bytes
 ```
 
 ```json
-{"protocol": 1, "component": "app.native.screens.home", "method": "savePhoto",
- "args": [], "state": {"caption": ""},
- "filename": "IMG_0001.jpg", "mime": "image/jpeg", "size": 2483113}
+{
+  "protocol": 1,
+  "component": "app.native.screens.home",
+  "method": "savePhoto",
+  "args": [],
+  "state": {"caption": ""},
+  "filename": "IMG_0001.jpg",
+  "mime": "image/jpeg",
+  "size": 2483113
+}
 ```
 
 A frame rather than JSON with the file in base64, because base64 makes every
@@ -1914,10 +2049,22 @@ The `screen` part of a screen's render or action answer, and a push event
 for it, carries the chrome next to the fragment:
 
 ```json
-{"protocol": 1, "fragments": {"screen": {"version": "q3V0bG9yZW1pcHN1",
- "made_at": 1763150000123,
- "fragment": {"type": "text", "props": {"text": "Promo 7"}},
- "chrome": {"nav_bar": {"title": "Promo", "back": true}}}}}
+{
+  "protocol": 1,
+  "fragments": {
+    "screen": {
+      "version": "q3V0bG9yZW1pcHN1",
+      "made_at": 1763150000123,
+      "fragment": {
+        "type": "text",
+        "props": {"text": "Promo 7"}
+      },
+      "chrome": {
+        "nav_bar": {"title": "Promo", "back": true}
+      }
+    }
+  }
+}
 ```
 
 `chrome` MUST be an object for a screen, `{}` for none, and MUST be absent for
@@ -2058,8 +2205,17 @@ in chrome can move the app instead of calling a method:
 
 ```json
 {"navigate": "/promos/42"}
-{"navigate": "/inbox?unread=1", "replace": true, "transition": "fade"}
-{"back": true, "transition": "slide_from_left"}
+
+{
+  "navigate": "/inbox?unread=1",
+  "replace": true,
+  "transition": "fade"
+}
+
+{
+  "back": true,
+  "transition": "slide_from_left"
+}
 ```
 
 - `navigate` MUST be an app path: one leading `/`, no scheme or host, no
