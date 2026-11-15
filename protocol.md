@@ -263,15 +263,22 @@ before it is drawn:
 In the client each region in a request is still its own request, with its
 own timer and its own supersede rule. The client delivers each part as if it
 had been asked for alone. A region the answer left out MUST fail with reason
-`invalid`. When a request fails as a whole, every region in it fails and each
-failure is surfaced on its own.
+`invalid`, and the other parts are still delivered. When a request fails as a
+whole, every region in it fails and each failure is surfaced on its own.
+
+`fragments` is a JSON object, so its parts have no order ([RFC 8259 §4](https://www.rfc-editor.org/rfc/rfc8259#section-4)),
+and a client MUST NOT depend on one. A client MUST ignore a part for a region
+the request did not name, apart from the regions an action redraws
+([§10.2](#102-server-actions-the-default)).
 
 **Limits.** A server that renders every region a request names, however many,
 lets one small request make it do any amount of work. A server SHOULD limit
 how many regions one request may name. A request over its limit gets
 `422 too_many_regions`, and nothing in it is rendered. A client that gets one
-MAY send the same regions again, split across smaller requests. The protocol
-does not fix the limit. The reference implementations allow 16.
+MAY send the same regions again, split across smaller requests. A request
+for one region that gets it fails with reason `server` ([§10.2](#102-server-actions-the-default)). The protocol
+does not fix the limit, or the order in which a server checks a request with
+more than one problem. The reference implementations allow 16.
 
 The server MUST NOT compress the answer unless every region in it allows it
 ([§7.4](#74-encryption)). An answer that mixes a region with compression turned off and others
@@ -976,9 +983,12 @@ recognisably unchanged. Changes that land together, such as a navigation
 that unmounts one screen and mounts another, make one reopen.
 
 **Version tokens.** Reopening is frequent, so the server does not send every
-region again each time. Every part of a region answer MUST carry a `version`: an opaque
+region again each time. Every part of a region answer carries a `version`: an opaque
 token of up to 64 characters of `A-Z a-z 0-9 _ -`, derived from the push
 counters that region watches for that address, state and set of channels.
+A server that cannot read its counters at the time leaves `version` out
+rather than failing the render. The client then holds no token for that
+region, so the stream sends the region again when it connects.
 
 ```json
 {
@@ -1756,7 +1766,8 @@ exist:
 ```
 
 A hint for a whole component covers hints for its regions, and an answer
-MUST carry at most 16 hints and 16 inline regions.
+MUST carry at most 16 hints and 16 inline regions besides the action's own,
+so at most 17 parts.
 
 In the client a hint is handled like a stream signal ([§8.1](#81-the-push-stream)): every live
 instance at that address that drew the region is marked, and fetches it with

@@ -25,6 +25,10 @@
   `version`, `made_at` and `fragment` are gone too. An action names exactly
   one region in `regions`, and its own region is a part of `fragments` next
   to any others it redraws. A server screen asks for `["screen"]`.
+- `fragments` parts have no order, and a client ignores a part for a region
+  it did not ask for, apart from an action's redraws (§3.1). A missing own
+  region fails only that region. A part may leave out `version` when the
+  server cannot read its push counters (§8.1).
 - The fixed limit of 16 regions per request is gone. A server SHOULD set its
   own limit and answer a request over it with `422 too_many_regions`; a
   client may split the regions across smaller requests and try again.
