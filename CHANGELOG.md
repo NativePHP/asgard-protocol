@@ -34,6 +34,9 @@
   open question 13 on app attestation at the handshake.
 - §4 calls an address from a client untrusted input rather than
   attacker-controlled.
+- A server component has one list of methods exposed to clients, used for
+  both actions (§10.2) and method calls (§10.5). An exposed method can be run
+  either way. Uploads keep their own list (§10.6). The wire is unchanged.
 - The fixed limit of 16 regions per request is gone. A server SHOULD set its
   own limit and answer a request over it with `422 too_many_regions`; a
   client may split the regions across smaller requests and try again.

@@ -1700,12 +1700,12 @@ answer.
 The client applies it the same way it applies a render.
 
 A server MUST run `call` only when the server component has explicitly
-exposed a method of that name as an action. Otherwise it MUST answer
-`404 unknown_action`. In particular:
+exposed a method of that name to clients. Each server component has one such
+list, and it covers both actions and method calls ([§10.5](#105-method-calls)). Otherwise the
+server MUST answer `404 unknown_action`. In particular:
 
 - Nothing is callable by default. Being public, or existing, is not enough.
-- A method that renders a region is not an action unless it is also exposed
-  as one.
+- A method that renders a region is not an action unless it is also exposed.
 - Nothing the server's own framework provides is an action.
 - Arguments are plain JSON values, passed in order. The server MUST NOT turn
   an argument into a record or object by looking it up, so a client cannot
@@ -1956,9 +1956,8 @@ That restriction binds the client's UI, not the server. The client MUST apply
 each member under compare-and-set: only if it still holds the value it was
 sent with.
 
-A server MUST run `method` only under the rules of [§10.2](#102-server-actions-the-default), with "exposed for
-calls" in place of "exposed as an action". The two are separate lists, so an
-action is not callable as a method call and the other way round. Otherwise it
+A server MUST run `method` only under the rules of [§10.2](#102-server-actions-the-default). The method must be
+on the same list a tap's action is checked against. Otherwise the server
 answers `404 unknown_method`. An unknown address is `404 unknown_component`.
 A malformed body, a member it does not know ([§5.3](#53-compatibility)), or state or args that do
 not fit is `422 invalid_request`.
@@ -1968,8 +1967,8 @@ Failures and timeouts are as in [§10.2](#102-server-actions-the-default), with 
 ### 10.6 Uploads
 
 The app can send a file to a method on the server component. The server
-method is exposed for uploads, a list of its own, apart from actions and
-method calls. It receives the file, then the args, which are checked as an
+method is exposed for uploads, on a list of its own, separate from the one
+for actions and method calls. It receives the file, then the args, which are checked as an
 action's are. There is no matching client method and no client body.
 The request carries the component's state as it is when the upload starts.
 
