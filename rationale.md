@@ -2,7 +2,7 @@
 
 This document is not part of the protocol. It records the evidence behind some
 choices in [protocol.md](protocol.md), so that the spec itself can stay free of
-vendor names. Vendor behaviour changes, so check anything here before relying
+vendor names. Vendor behavior changes, so check anything here before relying
 on it.
 
 ## Why QUERY needs a fallback
@@ -22,8 +22,8 @@ managed rules, Azure Front Door and Application Gateway's default rule set
 switches on a managed WAF, on any platform. It is not confined to particular
 vendors.
 
-**CDNs.** Akamai is worse. Its `allowOptions` behaviour permits GET, HEAD and
-OPTIONS and answers 501 to the rest. It has a separate allow behaviour per
+**CDNs.** Akamai is worse. Its `allowOptions` behavior permits GET, HEAD and
+OPTIONS and answers 501 to the rest. It has a separate allow behavior per
 verb and no `allowQuery` among them, so an Akamai customer has no setting
 that turns QUERY on at all.
 

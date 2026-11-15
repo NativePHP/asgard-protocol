@@ -15,7 +15,7 @@ Change what part of an app looks like by deploying the server, not by shipping a
 Some of the things that makes possible:
 
 - **Live data.** Order tracking, sports scores, dashboards. The server tells the client when a region has changed over the [push stream](protocol.md#81-the-push-stream), and the client fetches the new fragment. The app doesn't have to poll.
-- **Experiments and personalisation.** The server sees the state the client sends with each request, so it can render a different fragment per user or per experiment arm. A/B tests and feature rollouts become server deploys, and turning one off doesn't need an app update.
+- **Experiments and personalization.** The server sees the state the client sends with each request, so it can render a different fragment per user or per experiment arm. A/B tests and feature rollouts become server deploys, and turning one off doesn't need an app update.
 - **Content by country.** Pricing, legal notices, payment options, or a checkout or sign-up form that has to differ by country. The server renders the right one for where the user is. Each installation doesn't need to carry every country's version, and a new rule ships the day it takes effect.
 - **Content managed outside the app.** Home screens, promotions, onboarding and seasonal campaigns can come from a CMS. Editors change them on the server and every installed version of the app picks up the change.
 - **Third-party widgets.** A partner's server can render a region in your app, such as a payment summary, a loyalty card or a booking status. The partner sends data your app chooses how to draw. It can't run code, and it can only call methods you [exposed to servers](protocol.md#103-client-actions).

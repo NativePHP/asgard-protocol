@@ -112,7 +112,7 @@ server renders from what it is sent and does not need to keep a copy.
 
 Owning state is not the same as being trusted. An app can be taken apart, its
 key extracted, and the device it runs on rooted ([§7.1](#71-threat-model)). A server still
-treats client state as untrusted input and authorises every action against
+treats client state as untrusted input and authorizes every action against
 the authenticated identity ([§7.5](#75-authentication-is-separate)), never against what the state claims.
 Anything the client must not control, such as a balance or a permission,
 belongs in the server's session state ([§5.2](#52-server-session-state)) or its own storage.
@@ -375,7 +375,7 @@ locally, and sends with each region request.
 It is **untrusted input**. The signature in [§7](#7-security) proves it arrived intact from a
 holder of a valid session. It does not prove the values are true, because the
 client that produced them runs outside the server's control. A server MUST
-authorise every action against the authenticated identity from [§7.5](#75-authentication-is-separate), never
+authorize every action against the authenticated identity from [§7.5](#75-authentication-is-separate), never
 against something the state claims.
 
 State is plain JSON. A server that turns its values into richer types (dates,
@@ -515,7 +515,7 @@ Either side can lose a session: expiry on the client, eviction on the server.
 Both resolve to the same move, and it MUST be invisible to the app developer
 and the user.
 
-| Condition | Status | Client behaviour |
+| Condition | Status | Client behavior |
 |---|---|---|
 | Session unknown or expired | `419` | Re-handshake once, retry the request once. |
 | Digest, signature or decryption failed, signature expired, nonce reused or missing | `403` | **MUST NOT retry.** Surface an error. |
@@ -1007,7 +1007,7 @@ first answer, a state changes, an instance unmounts) the client MUST open the
 stream again with the new set, signed afresh. An empty set MUST close it. A
 change that leaves the set as it was does nothing, so subscription ids are
 derived from the address and the canonical state, and an unchanged set is
-recognisably unchanged. Changes that land together, such as a navigation
+recognizably unchanged. Changes that land together, such as a navigation
 that unmounts one screen and mounts another, make one reopen.
 
 **Version tokens.** Reopening is frequent, so the server does not send every
@@ -1411,7 +1411,7 @@ A fragment describes a subtree inside a region. It is not a screen.
   create one.
 
   These type names are reserved for those two kinds, so that both sides can
-  recognise them: `top_bar`, `top_bar_action`, `top_bar_title`, `bottom_nav`,
+  recognize them: `top_bar`, `top_bar_action`, `top_bar_title`, `bottom_nav`,
   `bottom_nav_item`, `bottom_bar`, `side_nav`, `side_nav_item`,
   `side_nav_group`, `side_nav_header`, `native_drawer`, `fab` and
   `server_region`. A client that has a chrome or region type by another name
@@ -1520,7 +1520,7 @@ Every type accepts these props:
 
 Values in the tables below:
 
-- A **colour** is a string, `#RRGGBB`, or `#AARRGGBB` with alpha first.
+- A **color** is a string, `#RRGGBB`, or `#AARRGGBB` with alpha first.
 - A **size** is a number in points (iOS) or density-independent pixels
   (Android).
 
@@ -1558,7 +1558,7 @@ inline runs inside it with their own styling.
 | Prop | Type | Meaning |
 |---|---|---|
 | `text` | string | The text. |
-| `color` | colour | Text colour. |
+| `color` | color | Text color. |
 | `fontSize` | size | Font size. |
 | `fontWeight` | integer | 1 thin, 2 light, 3 regular, 4 medium, 5 semibold, 6 bold, 7 heaviest. A client clamps other values into that range. |
 | `textAlign` | string | `left`, `center` or `right`. |
@@ -1572,7 +1572,7 @@ A tappable button with a text label. Its action is its `on_press` slot.
 |---|---|---|
 | `label` | string | The label. |
 | `disabled` | boolean | Shown disabled, and taps do nothing. Default false. |
-| `labelColor` | colour | Label colour. |
+| `labelColor` | color | Label color. |
 | `fontSize` | size | Label font size. |
 
 #### `image`
@@ -1583,7 +1583,7 @@ An image loaded from a URL.
 |---|---|---|
 | `src` | media URL | The image ([§9.6](#96-media-urls)). |
 | `fit` | string | `contain` (the default), `cover`, `fill` or `none`. |
-| `tintColor` | colour | Draws the image's opaque pixels in this colour. |
+| `tintColor` | color | Draws the image's opaque pixels in this color. |
 | `alt` | string | What a screen reader announces. An image without one is decorative and hidden from screen readers. |
 
 #### `spacer`
@@ -1594,7 +1594,7 @@ own.
 #### `divider`
 
 A thin line across its parent, to separate content. No props of its own. Its
-colour and thickness come from `class`.
+color and thickness come from `class`.
 
 #### Well-known extension types
 
@@ -1714,7 +1714,7 @@ exposed a method of that name as an action. Otherwise it MUST answer
 
 An argument the method cannot take MUST be a `422`, not a `500`. Everything in
 `args` is untrusted input in the same sense as client state ([§5.1](#51-client-state)): an action
-MUST authorise against the bearer identity ([§7.5](#75-authentication-is-separate)), never against what it was
+MUST authorize against the bearer identity ([§7.5](#75-authentication-is-separate)), never against what it was
 sent.
 
 An action is stateless. Changes it makes to the component's state last for
@@ -2164,7 +2164,7 @@ The members of `chrome`:
 | `title`, `subtitle` | string | Title text. |
 | `back` | boolean | Show a back button. |
 | `hidden` | boolean | Hide the bar. |
-| `background_color`, `text_color` | string | Colours ([§9.7](#97-element-types)). |
+| `background_color`, `text_color` | string | Colors ([§9.7](#97-element-types)). |
 | `font` | string | Font name. |
 | `elevation` | integer | Shadow depth, 0 to 64. |
 | `display_mode` | string | `large`, `inline` or `automatic`. |
@@ -2179,7 +2179,7 @@ The members of `chrome`:
 | Field | Type | Meaning |
 |---|---|---|
 | `hidden` | boolean | Hide the bar. |
-| `active_color`, `background_color`, `text_color` | string | Colours ([§9.7](#97-element-types)). |
+| `active_color`, `background_color`, `text_color` | string | Colors ([§9.7](#97-element-types)). |
 | `font` | string | Font name. |
 | `label_visibility` | string | `labeled`, `selected` or `unlabeled`. |
 | `dark` | boolean | Use the dark style. |
