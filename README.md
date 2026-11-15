@@ -29,13 +29,14 @@ The server builds the UI for each request, rather than picking from screens some
 
 ## How it compares
 
-The idea isn't new. Plenty of tools render UI on a server and update it in place, on the web and in cross-platform frameworks. What they share is that each one comes with its own stack: you get the format, the transport and the state model by adopting that tool's server, client library or language. None of them is written down as a spec that two unrelated stacks could each implement and expect to work together.
+The idea isn't new. Plenty of tools render UI on a server and update it in place, on the web and in cross-platform frameworks. What they share is that each one comes with its own stack: you get the format, the transport and the state model by adopting that tool's server, client library or language. Only one of them, Inertia, has a written protocol that other stacks implement, and it covers much less.
 
 On the web:
 
 - **Phoenix LiveView** keeps state on the server over a WebSocket and sends diffs. Its wire format belongs to Phoenix, and so does LiveView Native, which brings the same model to SwiftUI and Jetpack Compose.
 - **Livewire** sends component state with each request and gets HTML back. It is a Laravel package for Blade, and its payload is an implementation detail.
 - **HTMX** and **Hotwire** swap in HTML fragments from any server. They are close in spirit and stack-neutral on the server, but the fragment is HTML and the client is a browser. Hotwire Native wraps those web pages in a native shell rather than drawing native elements.
+- **Inertia.js** is the closest to a spec. It has a short published protocol (a header, a page object with a component name and its props, a version check and partial reloads), and there are server adapters for Laravel, Rails, Django, Phoenix and others. But the server only sends data: the client must already ship every page as a React, Vue or Svelte component, so a new screen still means a new client build. It works on whole pages, leaves security to cookies and CSRF, and has no push or uploads of its own.
 - **ASP.NET Web Forms ViewState** round-tripped serialized page state on every post. It is the old lesson in what happens when that state gets big or is trusted too much.
 
 In cross-platform frameworks:
@@ -47,6 +48,17 @@ In cross-platform frameworks:
 - Large apps such as Airbnb have built their own server-driven UI systems, which stay in-house.
 
 Asgard tries to cover the whole conversation in one document that doesn't assume a language, framework or rendering engine: the [handshake](protocol.md#6-sessions), [signed and encrypted requests](protocol.md#7-security), state going up and [deltas](protocol.md#105-method-calls) coming back, [regions with placeholders](protocol.md#3-regions), the [push stream](protocol.md#81-the-push-stream), [uploads](protocol.md#106-uploads) and [server-owned screens](protocol.md#12-server-screens). A server in any language can talk to any client that follows it.
+
+### Why not just HTML and JavaScript?
+
+HTML and JavaScript are open standards, run everywhere and can describe almost any UI. A native app can show them in a web view today. Asgard deliberately does much less, and that is the point:
+
+- **Native elements, not a web page.** A fragment becomes the platform's own controls inside a native screen, with their look, accessibility, gestures and performance. A web view is a separate world, with its own navigation, back stack, keyboard handling and state, that the native screen around it can't easily share.
+- **Data, not code.** A fragment is a description of [element types](protocol.md#97-element-types) from a fixed list, and a tap can only reach a method the app has [exposed to servers](protocol.md#103-client-actions). A page with JavaScript is a program: it can do whatever the web view and any bridge into the app allow, and app store rules limit what downloaded code may change.
+- **A small vocabulary both sides agree on.** At the [handshake](protocol.md#61-handshake) the client lists the element types it can draw, and the server sends only those. A browser has to cope with decades of markup, several engines and many versions of each, so web code leans on feature detection, polyfills and fallbacks. An Asgard server knows exactly what the client in front of it supports.
+- **The app stays in charge.** The client owns the state, the screen and the [placeholder](protocol.md#3-regions), so a region still works offline or when the server is down. A web view that can't load shows nothing useful.
+
+If you want arbitrary UI, a whole website, or something to run in a browser, use the web. Asgard is for the parts of a native app that should change without a release, and nothing more.
 
 ## Status
 
