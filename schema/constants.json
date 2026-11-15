@@ -10,7 +10,8 @@
   "protocol": {
     "value": 1,
     "section": "§11",
-    "note": "The integer in `protocol` in every body, and the value of the Asgard-Protocol header as a string. A client supports exactly one version per build; a server MAY support several."
+    "note": "The version this document defines. It is the integer in `protocol` in every body and in the handshake answer, and the value of the Asgard-Protocol header as a string. The client offers every version it speaks in the handshake's `protocols` (1 to 16 distinct positive integers) and the server picks the highest it also speaks. Either side MAY speak several. Until 1.0 the version stays 1 across drafts.",
+    "offer_max": 16
   },
   "encodings": {
     "value": ["tree/json"],
@@ -53,7 +54,7 @@
 
   "headers": [
     { "name": "Asgard-Session-Id", "direction": "request", "signed": true, "section": "§6.2", "note": "On every request after the handshake. Its value is the session id, which is also the signature keyid and the aes128gcm keyid." },
-    { "name": "Asgard-Protocol", "direction": "both", "signed": true, "value": "1", "section": "§6.2, §7.3", "note": "The protocol version as a decimal integer. Every request after the handshake MUST carry it, and every sealed response does; a covered component of both. A request with it missing or unsupported is the early rejection 422 unsupported_protocol. The handshake carries its version in the body instead, and a server ignores the header on {base}/session." },
+    { "name": "Asgard-Protocol", "direction": "both", "signed": true, "value": "1", "section": "§6.2, §7.3", "note": "The protocol version as a decimal integer. Every request after the handshake MUST carry it, and every sealed response does; a covered component of both. A request with it missing or unsupported is the early rejection 422 unsupported_protocol, and so is one whose version is not the one its session was made with. The handshake carries its version in the body instead, and a server ignores the header on {base}/session." },
     { "name": "X-Asgard-Method", "direction": "request", "signed": "when present", "value": "QUERY", "section": "§8", "note": "Turns a POST into a QUERY. Never on {base}/session." },
     { "name": "Authorization", "direction": "request", "signed": "when present", "section": "§7.3, §7.5", "note": "The app's own bearer token. Covered when, and only when, the request carries it." },
     { "name": "Content-Type", "direction": "both", "signed": true, "value": "application/json", "section": "§7.4, §8", "note": "A client MUST send it. It stays application/json for encrypted bodies and upload frames. A stream answer is text/event-stream." },
@@ -83,7 +84,7 @@
 
   "errors": [
     { "error": "unknown_key", "status": 403, "sealed": false, "endpoints": ["session"], "section": "§6.1", "meaning": "The handshake named a key the server does not know, or the server has none configured." },
-    { "error": "unsupported_protocol", "status": 422, "sealed": false, "endpoints": ["session", "render", "stream", "call", "upload", "routes"], "section": "§6.1, §6.2, §7.3", "meaning": "The server does not speak the client's protocol: at the handshake the body's `protocol`, afterwards a missing or unsupported Asgard-Protocol header (an early rejection). The body also carries `protocols`, the list it does speak." },
+    { "error": "unsupported_protocol", "status": 422, "sealed": false, "endpoints": ["session", "render", "stream", "call", "upload", "routes"], "section": "§6.1, §6.2, §7.3", "meaning": "The server does not speak the client's protocol: at the handshake none of the versions in the body's `protocols`, afterwards a missing or unsupported Asgard-Protocol header, or one that is not the session's version (an early rejection). The body also carries `protocols`, the list it does speak." },
     { "error": "unsupported_coding", "status": 415, "sealed": false, "endpoints": ["render", "stream", "call", "upload", "routes"], "section": "§7.3, §7.4", "meaning": "The request's Content-Encoding is missing or is not aes128gcm. An early rejection." },
     { "error": "unsupported_encoding", "status": 422, "sealed": false, "endpoints": ["session"], "section": "§6.1", "meaning": "No encoding in `accepts` is one the server speaks." },
     { "error": "method_not_allowed", "status": 405, "sealed": false, "endpoints": ["session", "render", "stream", "call", "upload", "routes"], "section": "§7.3, §8", "meaning": "On session anything but POST; elsewhere anything but QUERY or POST with X-Asgard-Method: QUERY." },

@@ -1,0 +1,12 @@
+{
+  "status": 200,
+  "sealed": false,
+  "body": {
+    "$partial": true,
+    "session": "{{nonempty}}",
+    "server_public": "{{point}}",
+    "protocol": 1,
+    "expires_in": "{{int}}",
+    "encoding": "tree/json"
+  }
+}

@@ -571,16 +571,21 @@ ones. It never carries `X-Asgard-Method`:
 →  POST {base}/session
    Content-Type: application/json
    Authorization: Bearer <token>              (when the app has one)
-   { "key": "<asgard_key>", "protocol": 1, "accepts": ["tree/json"],
+   { "key": "<asgard_key>", "protocols": [1], "accepts": ["tree/json"],
      "elements": ["list_item", "toggle"],
      "client_public": "<base64url P-256 point>" }
 
 ←  200
    Content-Type: application/json
    { "session": "<opaque id>", "server_public": "<base64url P-256 point>",
-     "expires_in": 1800, "encoding": "tree/json" }
+     "protocol": 1, "expires_in": 1800, "encoding": "tree/json" }
 ```
 
+- `protocols` lists every protocol version the client speaks ([§11](#11-versioning)). It
+  MUST be an array of 1 to 16 distinct positive integers. The server picks
+  the highest version it also speaks and answers with it in `protocol`. The
+  session is made with that version, and everything after the handshake
+  uses it.
 - `client_public` and `server_public` MUST be uncompressed points,
   `0x04 || X || Y`, 65 bytes, as defined in [SEC 1 §2.3.3](https://www.secg.org/sec1-v2.pdf), in base64url
   without padding. A point that is malformed or not on the curve MUST be
@@ -615,13 +620,14 @@ ones. It never carries `X-Asgard-Method`:
   stores the secret against the session id. The client stores it with the id
   and the expiry ([§6.2](#62-use-and-renewal)).
 - A key the server does not know is `403 {"error":"unknown_key"}`, and so is
-  any key while the server has none configured. A protocol the server does
-  not speak is `422 {"error":"unsupported_protocol","protocols":[1]}`, where
-  `protocols` lists the versions it does speak. An `accepts` with no
+  any key while the server has none configured. A `protocols` with no
+  version the server speaks is
+  `422 {"error":"unsupported_protocol","protocols":[1]}`, where `protocols`
+  lists the versions the server does speak. An `accepts` with no
   encoding the server speaks is `422 {"error":"unsupported_encoding"}`. Any
   other body the server cannot use (not a JSON object, or a member missing
   or of the wrong type) is `422 {"error":"invalid_request"}`.
-- The handshake names its version in the body's `protocol`. It does not need
+- The handshake offers its versions in the body's `protocols`. It does not need
   the `Asgard-Protocol` header that every later request carries ([§6.2](#62-use-and-renewal)),
   and a server MUST ignore that header on `{base}/session`.
 
@@ -640,13 +646,15 @@ route list. Each accepted request MUST slide the expiry forward on the server.
 The client slides its own copy when a response verifies.
 
 Every request after the handshake MUST also carry `Asgard-Protocol`: the
-protocol version the session was made with, as a decimal integer. For this
-version that is `Asgard-Protocol: 1`. Every sealed response carries it too.
-It is a covered component of both ([§7.3](#73-signatures)). A server MUST refuse a request
-whose `Asgard-Protocol` is missing, or is not a version it speaks, with the
-early rejection `422 {"error":"unsupported_protocol","protocols":[1]}`
+protocol version the session was made with ([§6.1](#61-handshake)), as a decimal integer.
+For this version that is `Asgard-Protocol: 1`. Every sealed response carries
+it too. It is a covered component of both ([§7.3](#73-signatures)). A server MUST refuse a
+request whose `Asgard-Protocol` is missing, or is not a version it speaks,
+with the early rejection `422 {"error":"unsupported_protocol","protocols":[1]}`
 ([§7.3](#73-signatures)), listing the versions it does speak as the handshake does. It
-checks this before anything else ([§7.6](#76-rejecting-early)).
+checks this before anything else ([§7.6](#76-rejecting-early)). Once it has found the session,
+it MUST refuse a request whose `Asgard-Protocol` is not the version that
+session was made with, with the same rejection.
 
 A client keeps one session per base URL and `asgard_key`, where every part of
 the client that makes requests can use it. It need only store the 32-byte
@@ -665,7 +673,7 @@ and the user.
 |---|---|---|
 | Session unknown or expired | `419` | Re-handshake once, retry the request once. |
 | Digest, signature or decryption failed, signature expired, nonce reused or missing | `403` | **MUST NOT retry.** Surface an error. |
-| `Asgard-Protocol` missing or unsupported, or a request content coding other than `aes128gcm` | `422`, `415` | **MUST NOT retry.** Surface an error. |
+| No version in common at the handshake, `Asgard-Protocol` missing, unsupported or not the session's, or a request content coding other than `aes128gcm` | `422`, `415` | **MUST NOT retry.** Surface an error. The client offered every version it speaks, so a second try cannot do better. |
 | Method the endpoint does not accept | `405` | On the first QUERY request after a handshake, fall back to POST as [§8](#8-transport) says. Otherwise **MUST NOT retry.** |
 | Bearer token rejected | `401` | Hand to the app's auth flow. |
 | Unknown component | `404` | Keep the placeholder, log. |
@@ -982,7 +990,8 @@ Order of checks, cheapest and most decisive first:
 1. `Asgard-Protocol` is a version the server speaks ([§6.2](#62-use-and-renewal)): else
    `422 unsupported_protocol`.
 2. `Content-Encoding` is `aes128gcm` ([§7.4](#74-encryption)): else `415 unsupported_coding`.
-3. The session id is known: else `419 session_expired`.
+3. The session id is known: else `419 session_expired`. `Asgard-Protocol` is
+   the version the session was made with: else `422 unsupported_protocol`.
 4. `Content-Digest` matches the body: else `403 forbidden`.
 5. The signature is valid and fresh: else `403 forbidden`.
 6. A call or upload carries a nonce: else `403 nonce_required`. Any nonce
@@ -2470,13 +2479,44 @@ record is future work.
 
 ## 11. Versioning
 
-`protocol` in the handshake is an integer. A server that does not speak the
-client's version MUST say so at handshake, not mid-render. Clients support exactly
-one version per build; servers MAY support several.
+The protocol version is a positive integer. This document defines version 1.
 
-After the handshake the version travels in the `Asgard-Protocol` header of
+**When it changes.** The version goes up only for a change that an older
+peer could get wrong: a member whose meaning changes, something that was
+allowed and is now refused, or a change to the handshake, signing or
+encryption. A change an older peer can safely ignore does not need a new
+version, and has its own way in instead:
+
+- a new member in an object, which a receiver that does not know it ignores
+  ([§5.3](#53-compatibility));
+- a new fragment encoding, offered in the handshake's `accepts` ([§9](#9-fragment-format));
+- a new element type, offered in the handshake's `elements` ([§9.7](#97-element-types)).
+
+**Drafts.** Until 1.0, version 1 means whatever the current draft says, and
+two drafts are not promised to work with each other even though both send
+`1`. An implementation SHOULD say which draft it follows. From 1.0 on,
+version 1 means exactly what 1.0 says, and the next incompatible change is
+version 2.
+
+**Agreeing a version.** A client and a server MAY each speak several
+versions. The client offers every version it speaks in the handshake's
+`protocols`, and the server picks the highest one it also speaks and
+answers with it in `protocol` ([§6.1](#61-handshake)). With none in common the server
+refuses the handshake with `422 unsupported_protocol`, listing the versions
+it does speak, and the client surfaces an error. There is no separate way to
+ask a server which versions it speaks: the handshake is how a client finds
+out, and it costs no extra round trip.
+
+The handshake is not signed, so whoever can tamper with it could also strip
+the higher versions from `protocols`. That is no worse than what tampering
+with the handshake already allows ([§7.1](#71-threat-model)).
+
+**After the handshake.** The session is made with one version, and it keeps
+it until it ends. The version travels in the `Asgard-Protocol` header of
 every request and every sealed response ([§6.2](#62-use-and-renewal)), and `protocol` in every
-body carries the same value.
+body carries the same value. The `asgard/1` in the key derivation labels,
+signature tags and event labels of [§6](#6-sessions), [§7](#7-security) and [§8.1](#81-the-push-stream) is this version.
+A later version defines its own.
 
 ## 12. Server screens
 

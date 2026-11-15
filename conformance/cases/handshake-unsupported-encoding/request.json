@@ -2,7 +2,9 @@
   "endpoint": "session",
   "body": {
     "key": "{{key}}",
-    "protocol": 1,
+    "protocols": [
+      1
+    ],
     "accepts": [
       "tree/xml"
     ],

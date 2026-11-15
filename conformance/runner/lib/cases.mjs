@@ -74,7 +74,7 @@ export class Runner {
 
   async handshake({ elements } = {}) {
     const pair = ecdhKeyPair();
-    const body = { key: this.key, protocol: 1, accepts: ['tree/json'], client_public: b64u(pair.publicKey) };
+    const body = { key: this.key, protocols: [1], accepts: ['tree/json'], client_public: b64u(pair.publicKey) };
     if (elements) body.elements = elements;
     const res = await request({ url: this.endpointUrl('session'), method: 'POST', headers: { 'content-type': 'application/json', accept: 'application/json' }, body: JSON.stringify(body) });
     if (res.status !== 200) throw new Error(`handshake failed: ${res.status} ${res.body.toString().slice(0, 200)}`);

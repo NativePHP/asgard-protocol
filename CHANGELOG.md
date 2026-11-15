@@ -100,6 +100,15 @@
   early rejection `422 {"error":"unsupported_protocol","protocols":[1]}`.
   The handshake carries its version in the body, and a server ignores the
   header there.
+- Versions are agreed at the handshake (§6.1, §11). The client sends
+  `protocols`, every version it speaks, in place of `protocol`. The server
+  picks the highest one it also speaks and returns it as `protocol` in the
+  handshake answer. With none in common it refuses with
+  `422 unsupported_protocol`, as before. Both sides may speak several
+  versions. A request whose `Asgard-Protocol` is not its session's version
+  gets the same rejection.
+- §11 now says when the version goes up (only for changes an older peer
+  could get wrong) and that it stays 1 across drafts until 1.0.
 - A request whose `Content-Encoding` is missing or not `aes128gcm` gets the
   early rejection `415 {"error":"unsupported_coding"}` (§7.4), which SHOULD
   carry `Accept-Encoding: aes128gcm`. The spec named no status before.

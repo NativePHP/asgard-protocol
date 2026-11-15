@@ -3,7 +3,9 @@
   "method": "QUERY",
   "body": {
     "key": "{{key}}",
-    "protocol": 1,
+    "protocols": [
+      1
+    ],
     "accepts": [
       "tree/json"
     ],
