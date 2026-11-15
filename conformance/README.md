@@ -49,13 +49,13 @@ node conformance/runner/run.mjs --vectors
 This also checks that `schema/fragment.schema.json` and
 `schema/constants.json` agree wherever both say something.
 
-**gzip bytes.** §7.4 fixes the gzip header and level 6 so that the same input
-gives the same bytes on any server. That only holds between builds of the
-same deflate library. Node bundles a fork of zlib that deflates to different
-bytes at level 6 than stock zlib does, and so may zlib-ng or miniz. The gzip
-bytes in the vectors come from stock zlib 1.3. An implementation checks them
-by inflating, and its own gzip output by checking the fixed header and that
-it inflates to the plaintext. The runner says when its own deflate differs.
+**gzip bytes.** §7.4 fixes the gzip header and level 6 so answers are
+comparable, but not so that they are the same bytes. Node bundles a fork of
+zlib that deflates to different bytes at level 6 than stock zlib does, and so
+may zlib-ng or miniz. The gzip bytes in the vectors come from stock zlib 1.3.
+As §7.4 says, an implementation checks them by inflating, and its own gzip
+output by checking the fixed header and that it inflates to the plaintext.
+The runner says when its own deflate differs.
 
 `vectors/make-vectors.mjs` rebuilds the file from its fixed inputs. It needs
 `php` on the path for stock zlib. Rebuild only when the protocol changes what

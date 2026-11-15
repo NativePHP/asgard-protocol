@@ -840,7 +840,8 @@ the fragment format, so [§9](#9-fragment-format) is unchanged.
 
 **Compression.** Nothing between the server and the client can compress an
 encrypted body, so the server compresses fragments itself, before encrypting
-them. A 200-row list fragment of about 52 KB went over the wire as 2.4 KB.
+them. A 200-row list fragment of about 52,000 bytes went over the wire as about
+2,400.
 
 - Only responses and pushed events are compressed. Requests MUST NOT be
   compressed: they are small, and they carry client state. A server MUST
@@ -865,8 +866,12 @@ them. A 200-row list fragment of about 52 KB went over the wire as 2.4 KB.
   Errors MUST NOT be compressed: they are small and may echo what the client
   sent.
 - The gzip member ([RFC 1952](https://www.rfc-editor.org/rfc/rfc1952)) MUST have a fixed header (no file name, mtime
-  0, OS 255) and MUST be deflated at level 6, so the same input gives the same
-  bytes on any server.
+  0, OS 255) and MUST be deflated at level 6. The settings are fixed so that
+  answers from different servers are comparable, not so that they are the
+  same bytes: two deflate libraries, or two builds of one, can deflate the
+  same input at the same level to different bytes. A receiver checks a
+  compressed body by inflating it, and MUST NOT check it by comparing its
+  bytes with a compression of its own.
 - A client inflates in small steps and MUST give up as soon as the output
   passes **8 MiB** (8,388,608 bytes). Going over is a failure like a bad
   signature ([§6.3](#63-loss)). No real fragment comes near it, and it stops a small body
@@ -1551,6 +1556,7 @@ came with:
 ```json
 {
   "protocol": 1,
+  "delta": {},
   "fragments": {"stats": {"cached": true}}
 }
 ```
@@ -2280,7 +2286,7 @@ It goes to `{base}/upload`, signed and encrypted like everything else and with
 a nonce ([§7.3](#73-signatures)). The decrypted body is a frame rather than JSON:
 
 ```
-uint32, big-endian   N, the length of the header, at most 1 MiB
+uint32, big-endian   N, the length of the header, at most 1 MiB (1,048,576 bytes)
 N bytes              the header, a JSON object
 the rest             the file, exactly `size` bytes
 ```
@@ -2334,13 +2340,13 @@ no region. Two reasons are only for uploads, and both mean nothing was sent:
 - `unreadable`: the file the app named cannot be read as a regular file. A
   directory, a symbolic link, anything that is not a local file, and a path
   with a NUL byte MUST all be refused.
-- `too_large`: the file is over the client's own limit. 20 MB is
-  RECOMMENDED.
+- `too_large`: the file is over the client's own limit. 20 MiB
+  (20,971,520 bytes) is RECOMMENDED.
 
 A file the server finds too big or the wrong type is `server`, with status 413
 or 415.
 
-An upload waits for its answer longer than an action does, since 20 MB on a
+An upload waits for its answer longer than an action does, since 20 MiB on a
 slow network can take a while. 120 seconds is RECOMMENDED, with the HTTP
 timeout of the transport longer again, so the client's own timer fires first.
 

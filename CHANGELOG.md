@@ -77,6 +77,14 @@
 - A region or action answer may be compressed only when its delta is `{}`
   and every region in it allows it. An action's answer no longer simply
   follows its region (§7.4).
+- The `cached` example in §8.3 now carries `delta`, as every render answer
+  must (§5.4).
+- The recommended client cap on uploads is 20 MiB (20,971,520 bytes), not
+  "20 MB" (§10.6). Other sizes in the spec are given in bytes, KiB or MiB.
+- §7.4 no longer claims the fixed gzip settings give the same bytes on any
+  server. They keep answers comparable, but deflate builds differ, so a
+  receiver checks a compressed body by inflating it, never by comparing
+  bytes.
 
 ## Draft 3 (2026-11-14)
 
