@@ -56,6 +56,10 @@
   subscription's own tokens. A server sends patches only when it can account
   for every version step since the token it last sent, and a signal or
   fragment otherwise (§8.2).
+- On connect, a server may send the patches that cover the gap from the
+  client's token instead of a signal or fragment, when its records cover
+  every step. It may also wait briefly for the record of the newest step
+  before falling back (§8.2).
 
 ## Draft 3 (2026-11-14)
 

@@ -1288,8 +1288,17 @@ fragment for a shared region. That includes:
 How long a server keeps those records is up to it. Without them, it sends
 signals.
 
-On connect the server compares tokens as before ([§8.1](#81-the-push-stream)) and sends a signal
-or a fragment, never a replay of the patches the client missed.
+When the record for the newest step is not there yet, because the push that
+made it has not finished writing it, a server MAY wait a short time for it
+before falling back. Asgard's reference server waits 250 ms, and at least
+one poll.
+
+On connect the server compares tokens as before ([§8.1](#81-the-push-stream)). For a region whose
+token the client holds and which is behind, the server MAY send the patches
+its records hold for the gap, in order, instead of a signal or a fragment.
+It MUST do so only when the records cover every step from the client's
+token to the current one. Otherwise it sends a signal or a fragment as
+before.
 
 **The event.** A `patch` event is sealed like the others ([§8.1](#81-the-push-stream)):
 
@@ -1348,6 +1357,11 @@ event as a `signal` carrying the patch's `version`: the instance fetches the
 whole region, unless it already holds that version. A version mismatch, a
 missing tree or target, and a bad operation all end this way. The client
 SHOULD log why.
+
+While that fetch is out, more patches may arrive. A client MAY keep them
+and, once the answer lands, apply in order those that follow on from the
+version it now holds, under the same checks. Any it can't apply are treated
+as signals, as above.
 
 Patches apply in the order they arrive, and each must match the token the
 one before it left. Applying one SHOULD cost no more than changing the held
