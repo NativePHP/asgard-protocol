@@ -1,0 +1,6 @@
+{
+  "description": "A call naming a region the component does not have is 422 invalid_request.",
+  "sections": [
+    "§10.5"
+  ]
+}

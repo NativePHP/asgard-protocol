@@ -1,0 +1,8 @@
+{
+  "status": 403,
+  "body": {
+    "$partial": true,
+    "error": "nonce_required"
+  },
+  "sealed": true
+}

@@ -1,0 +1,8 @@
+{
+  "description": "A request with no Asgard-Session-Id is a plain 419.",
+  "sections": [
+    "§6.2",
+    "§6.3",
+    "§7.3"
+  ]
+}

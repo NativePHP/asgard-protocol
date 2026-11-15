@@ -1,0 +1,8 @@
+{
+  "description": "A request with a valid signature and a rejected bearer token is refused with a sealed 401.",
+  "sections": [
+    "§6.3",
+    "§7.5",
+    "§7.6"
+  ]
+}

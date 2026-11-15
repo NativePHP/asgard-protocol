@@ -1,0 +1,6 @@
+{
+  "description": "A client_public that is not on P-256 is refused with 422.",
+  "sections": [
+    "§6.1"
+  ]
+}

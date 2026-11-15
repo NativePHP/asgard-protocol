@@ -1,0 +1,7 @@
+{
+  "description": "Several regions in one request come back as one part each, under one delta.",
+  "sections": [
+    "§3.1",
+    "§5.4"
+  ]
+}

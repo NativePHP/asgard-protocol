@@ -1,0 +1,45 @@
+{
+  "endpoint": "stream",
+  "body": {
+    "protocol": 1,
+    "subscriptions": [
+      {
+        "id": "s1",
+        "component": "conformance.counter",
+        "regions": [
+          "feed"
+        ],
+        "state": {},
+        "versions": {
+          "feed": "{{v}}"
+        }
+      }
+    ]
+  },
+  "listen_ms": 4000,
+  "during": [
+    {
+      "request": {
+        "endpoint": "call",
+        "body": {
+          "protocol": 1,
+          "component": "conformance.counter",
+          "method": "post",
+          "args": [
+            "{{unique:posted}}"
+          ],
+          "state": {}
+        }
+      },
+      "response": {
+        "status": 200,
+        "sealed": true,
+        "body": {
+          "$partial": true,
+          "protocol": 1,
+          "delta": {}
+        }
+      }
+    }
+  ]
+}

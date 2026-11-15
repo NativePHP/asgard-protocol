@@ -1,0 +1,13 @@
+{
+  "status": 200,
+  "sealed": true,
+  "body": {
+    "$partial": true,
+    "fragments": {
+      "feed": {
+        "$partial": true,
+        "version": "{{version:v}}"
+      }
+    }
+  }
+}

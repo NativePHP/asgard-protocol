@@ -1,0 +1,8 @@
+{
+  "status": 422,
+  "sealed": true,
+  "body": {
+    "$partial": true,
+    "error": "{{string}}"
+  }
+}

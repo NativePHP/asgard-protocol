@@ -1,0 +1,7 @@
+{
+  "description": "An Authorization header the signature does not cover is a plain 403.",
+  "sections": [
+    "§7.3",
+    "§7.5"
+  ]
+}

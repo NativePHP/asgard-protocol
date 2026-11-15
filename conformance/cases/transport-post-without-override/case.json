@@ -1,0 +1,7 @@
+{
+  "description": "A POST without X-Asgard-Method is a plain 405.",
+  "sections": [
+    "§7.3",
+    "§8"
+  ]
+}

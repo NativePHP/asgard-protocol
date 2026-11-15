@@ -1,0 +1,7 @@
+{
+  "description": "The handshake endpoint takes only a plain POST. QUERY is a plain 405.",
+  "sections": [
+    "§6.1",
+    "§8"
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "status": 200,
+  "sealed": true,
+  "body": {
+    "$partial": true,
+    "protocol": 1,
+    "version": "{{nonempty}}",
+    "routes": [
+      "{{contains}}",
+      {
+        "$partial": true,
+        "uri": "/conformance/{id}",
+        "screen": "conformance.screen"
+      }
+    ]
+  }
+}

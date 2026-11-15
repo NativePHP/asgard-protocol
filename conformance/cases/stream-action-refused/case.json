@@ -1,0 +1,6 @@
+{
+  "description": "A stream request with an action is refused with a sealed 422.",
+  "sections": [
+    "§8.1"
+  ]
+}

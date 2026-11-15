@@ -1,0 +1,16 @@
+{
+  "endpoint": "render",
+  "body": {
+    "protocol": 1,
+    "component": "conformance.counter",
+    "regions": [
+      "count"
+    ],
+    "state": {}
+  },
+  "seal": {
+    "tamper": {
+      "drop_component": "asgard-session-id"
+    }
+  }
+}

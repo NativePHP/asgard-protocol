@@ -1,0 +1,6 @@
+{
+  "description": "A file whose sniffed type the method does not accept is 415 unsupported_type, whatever mime says.",
+  "sections": [
+    "§10.6"
+  ]
+}

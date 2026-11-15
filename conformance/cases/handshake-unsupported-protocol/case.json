@@ -1,0 +1,7 @@
+{
+  "description": "A protocol the server does not speak is 422 unsupported_protocol, listing the ones it does.",
+  "sections": [
+    "§6.1",
+    "§11"
+  ]
+}

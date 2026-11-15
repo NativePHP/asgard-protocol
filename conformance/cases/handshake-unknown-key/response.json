@@ -1,0 +1,8 @@
+{
+  "status": 403,
+  "sealed": false,
+  "body": {
+    "$partial": true,
+    "error": "unknown_key"
+  }
+}

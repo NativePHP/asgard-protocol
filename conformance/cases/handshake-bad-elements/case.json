@@ -1,0 +1,6 @@
+{
+  "description": "An elements list that repeats a name is refused with 422.",
+  "sections": [
+    "§6.1"
+  ]
+}

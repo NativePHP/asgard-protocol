@@ -1,0 +1,22 @@
+{
+  "endpoint": "stream",
+  "body": {
+    "protocol": 1,
+    "subscriptions": [
+      {
+        "id": "s1",
+        "component": "conformance.counter",
+        "regions": [
+          "count"
+        ],
+        "state": {
+          "count": 1
+        }
+      }
+    ]
+  },
+  "listen_ms": 2000,
+  "headers": {
+    "last-event-id": "999999999"
+  }
+}

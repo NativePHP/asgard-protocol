@@ -1,0 +1,6 @@
+{
+  "description": "Last-Event-ID is not signed and a server ignores it: the tokens decide what is sent on connect.",
+  "sections": [
+    "§8.1"
+  ]
+}

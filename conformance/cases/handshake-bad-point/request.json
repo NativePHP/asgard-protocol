@@ -1,0 +1,11 @@
+{
+  "endpoint": "session",
+  "body": {
+    "key": "{{key}}",
+    "protocol": 1,
+    "accepts": [
+      "tree/json"
+    ],
+    "client_public": "BAEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgI"
+  }
+}

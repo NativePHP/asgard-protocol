@@ -1,0 +1,6 @@
+{
+  "description": "A region with compression off goes out as identity. One that allows it may be gzipped, following every rule of §7.4.",
+  "sections": [
+    "§7.4"
+  ]
+}

@@ -1,0 +1,6 @@
+{
+  "description": "A push to a region a stream watches sends a signal with a new version.",
+  "sections": [
+    "§8.1"
+  ]
+}
