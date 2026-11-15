@@ -2,6 +2,10 @@
 
 ## Draft 4 (unreleased)
 
+- New `schema/constants.json`, with its own schema, holding the spec's
+  numbers, names and enums with the section each comes from. New
+  `conformance/` suite: byte-exact vectors, golden server cases run against
+  a small set of fixture components, and a runner. No wire change.
 - §1 now contrasts Asgard with the usual setup, where the server is the
   source of truth. The client is the source of truth for its own state, but
   that state is still untrusted input to the server.
