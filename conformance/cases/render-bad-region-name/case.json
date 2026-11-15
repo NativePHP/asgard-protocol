@@ -1,0 +1,7 @@
+{
+  "description": "A region name that does not match ^[A-Za-z0-9_.:-]{1,100}$ is a malformed body, a sealed 422 invalid_request.",
+  "sections": [
+    "§3",
+    "§3.1"
+  ]
+}

@@ -147,7 +147,26 @@ later version may define a safe way to deliver code. This one does not.
 
 A client marks a region of one of its own screens as server-rendered and
 gives it a name. The name MUST be unique among the regions of the component
-that declares it.
+that declares it, and MUST match:
+
+```
+^[A-Za-z0-9_.:-]{1,100}$
+```
+
+That is 1 to 100 letters, digits, underscores, dots, colons and hyphens. A
+server screen's body region is named `screen` ([§12.1](#121-screens)).
+
+A request can name regions in several places: `regions` in a region request
+or a batch ([§3.1](#31-when-the-client-asks)), the action's own region ([§10.2](#102-server-actions-the-default)), `regions` in a method
+call or upload ([§10.5](#105-method-calls), [§10.6](#106-uploads)), and `regions` in a stream subscription
+([§8.1](#81-the-push-stream)). Wherever it does, the server MUST check every name before it
+renders anything or runs any method, and the same rules apply:
+
+- A name that does not match the pattern above makes the body malformed,
+  and the answer is `422 invalid_request`.
+- A well-formed name that is not a region of the component is
+  `404 unknown_component`, the same answer as for an unknown address
+  ([§4](#4-addressing-components)).
 
 What the client shows in the region before a fragment arrives is the
 **placeholder**: a skeleton, a spinner, or anything else the app draws. It is
@@ -191,7 +210,9 @@ address ([§4](#4-addressing-components)), the regions it wants in `regions`, an
 ```
 
 `regions` MUST be a list of at least one distinct name. It is a list even for
-one region, so there is one request shape and one answer shape.
+one region, so there is one request shape and one answer shape. A server
+MUST answer any other `regions` (absent, empty, not a list, or with a name
+repeated) with `422 invalid_request`.
 
 The protocol has no field for the platform, app version or anything else
 about the client. A client that wants the server to know such a thing sends
@@ -225,9 +246,9 @@ declare the copies of this component's regions the client holds, in `cache`,
 and say it was sent because of a push, in `reason`. A server may then answer
 a part with `{"cached":true}` instead of a fragment. Both are in [§8.3](#83-caching).
 
-The server MUST check every name before it renders anything, and MUST answer
-an unknown one with `404 unknown_component`. The counters for every region's
-token MUST be read once, before any of them renders.
+The server MUST check the address and every region name before it renders
+anything, as [§3](#3-regions) and [§4](#4-addressing-components) say. The counters for every region's token MUST be
+read once, before any of them renders.
 
 An answer to a request that a newer one superseded, or for a component that
 has gone, MUST be dropped.
@@ -282,7 +303,9 @@ how many regions one request may name. A request over its limit gets
 MAY send the same regions again, split across smaller requests. A request
 for one region that gets it fails with reason `server` ([§10.2](#102-server-actions-the-default)). The protocol
 does not fix the limit, or the order in which a server checks a request with
-more than one problem. The reference implementations allow 16.
+more than one problem. The reference implementations allow 16. The same
+limit applies to the `regions` of a method call or upload ([§10.5](#105-method-calls)) and of
+each subscription on the push stream ([§8.1](#81-the-push-stream)).
 
 The server MUST NOT compress the answer unless its `delta` is `{}` and every
 region in it allows compression ([§7.4](#74-encryption)). An answer that mixes a region with
@@ -1072,11 +1095,14 @@ lists every subscription the client wants:
 - `id` is the client's name for a subscription. It MUST be 1 to 32 characters of
   `A-Z a-z 0-9 _ -`, unique within the request. The server only echoes it.
 - `component`, `state` and each name in `regions` follow the rules of a
-  region request ([§4](#4-addressing-components), [§5](#5-state)). `regions` MUST hold 1 to 16 distinct names.
+  region request ([§3](#3-regions), [§4](#4-addressing-components), [§5](#5-state)). `regions` MUST hold at least one
+  distinct name, and is held to the server's limit on regions per request
+  ([§3.1](#31-when-the-client-asks)), applied to each subscription on its own.
 - `versions` is optional. It maps a region to the version token the client
   holds for it (below).
-- There MUST NOT be an `action`, at the top level or in a subscription.
-  Other members the server does not know are ignored ([§5.3](#53-compatibility)).
+- There MUST NOT be an `action`, at the top level or in a subscription. A
+  server answers one with `422 invalid_request`. Other members the server
+  does not know are ignored ([§5.3](#53-compatibility)).
 
 A subscription is one component instance's view of the server: one address
 and one state. Two instances with the same address and the same state share a
@@ -1085,9 +1111,20 @@ two subscriptions, and each gets the pushes rendered for its own state.
 
 The server MUST check every subscription before it streams anything, and a
 request it refuses gets the answer render would give, sealed the same way:
-a 422 for a bad body, a 404 `unknown_component` for an unknown address or
-region in any subscription, a 500 `invalid_fragment` for a fragment it cannot
-send. It works out which push channels each subscription watches from that
+
+- `422 invalid_request` for a malformed body, such as a bad subscription
+  count, a bad or repeated `id`, or a malformed region name;
+- `422 too_many_regions` for a subscription that names more regions than
+  the server's limit ([§3.1](#31-when-the-client-asks));
+- `404 unknown_component` for an unknown address or region in any
+  subscription ([§3](#3-regions), [§4](#4-addressing-components));
+- `500 invalid_fragment` for a fragment it cannot send.
+
+A client that gets `too_many_regions` MAY split that subscription's regions
+across several subscriptions, each with its own `id`, and open the stream
+again. That is the one case where instances with the same address and state
+have more than one subscription. Nothing streams until the request is
+accepted whole. It works out which push channels each subscription watches from that
 subscription's state, and reads every counter of every subscription in one
 read per poll.
 
@@ -2232,10 +2269,11 @@ method of that name, and answers with `delta` ([§5.4](#54-state-sent-back)):
 
 The client decides which of the component's regions a call redraws, if any,
 by naming them in `regions`: a list of distinct region names, where an empty
-list means none. The server checks it before the method runs. A name that is
-not a region of the component is `422 invalid_request`, and a list over the
-server's limit on regions per request ([§3.1](#31-when-the-client-asks)) is `422 too_many_regions`. In
-either case the method does not run. With no `regions`, a call changes state
+list means none. The server checks it before the method runs, as [§3](#3-regions) says:
+a malformed name is `422 invalid_request`, and a name that is not a region
+of the component is `404 unknown_component`. A list over the server's limit
+on regions per request ([§3.1](#31-when-the-client-asks)) is `422 too_many_regions`. In each case the
+method does not run. With no `regions`, a call changes state
 only, unless the method itself asks for more.
 
 The answer carries `fragments` for the regions the request named and the
@@ -2268,7 +2306,8 @@ compressed, fragments or not, even with an empty delta ([§7.4](#74-encryption))
 
 A server MUST run `method` only under the rules of [§10.2](#102-server-actions-the-default). The method must be
 on the same list a tap's action is checked against. Otherwise the server
-answers `404 unknown_method`. An unknown address is `404 unknown_component`.
+answers `404 unknown_method`. An unknown address, or an unknown region in
+`regions`, is `404 unknown_component`.
 A malformed body, a member it does not know ([§5.3](#53-compatibility)), or state or args that do
 not fit is `422 invalid_request`.
 

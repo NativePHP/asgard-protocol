@@ -1,6 +1,7 @@
 {
-  "description": "A region the component does not have, in any position, is a sealed 404 unknown_component, and nothing renders.",
+  "description": "A well-formed region name the component does not have, in any position, is a sealed 404 unknown_component, and nothing renders.",
   "sections": [
+    "§3",
     "§3.1"
   ]
 }

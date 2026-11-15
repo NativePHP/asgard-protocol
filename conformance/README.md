@@ -286,7 +286,7 @@ Sections with no server case yet, and why:
 | §6.2 | Sliding expiry: it needs waiting out a session lifetime. |
 | §7.4 | A request with a coding other than aes128gcm (the spec names no status). Gzip correctness is checked whenever a server compresses, but not forced. |
 | §7.6 | The order of checks beyond what single failures show. |
-| §8.1 | A shared region rendered with no user on the stream, `max_age` on events, 204, the stream's lifetime and `retry`. Version tokens shared by two instances. |
+| §8.1 | `too_many_regions` on a subscription (the limit is the server's own). A shared region rendered with no user on the stream, `max_age` on events, 204, the stream's lifetime and `retry`. Version tokens shared by two instances. |
 | §8.2 | Patches sent on connect for a gap, `append`, `remove` and `keep`, and fallback when a record is missing. A server that never patches passes `stream-patch` with a signal. |
 | §8.3 | `Asgard-Cache: invalidate` (no fixture triggers it), `max_age`, and refusing `cached` for an undeclared region. |
 | §9.3, §9.6 | A server never sending a reserved type, a reserved prop, a non-https media URL or a fragment deeper than 64. Every fragment is checked for these, but no fixture tries to produce one. |

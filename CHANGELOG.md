@@ -73,10 +73,21 @@
   ignores them if it does.
 - A method call or upload may name `regions` to draw again after the method
   runs (§10.5), as well as any the method asks for. An unknown name is
-  `422 invalid_request`, and the method does not run.
+  `404 unknown_component`, and the method does not run.
 - A region or action answer may be compressed only when its delta is `{}`
   and every region in it allows it. An action's answer no longer simply
   follows its region (§7.4).
+- Region names MUST match `^[A-Za-z0-9_.:-]{1,100}$` (§3), the pattern the
+  reference implementations already use. §3 now says once how a server
+  checks a region name wherever a request names one (render, batch, action,
+  a call's or upload's `regions`, a stream subscription): a malformed name is
+  `422 invalid_request`, and a well-formed name the component does not have
+  is `404 unknown_component`.
+- A stream subscription's `regions` no longer has a fixed limit of 16. It is
+  held to the server's limit on regions per request, like render, and a
+  subscription over it gets `422 too_many_regions`. A client may split it
+  across several subscriptions (§8.1). The limit of 1 to 16 subscriptions
+  stays.
 - The `cached` example in §8.3 now carries `delta`, as every render answer
   must (§5.4).
 - The recommended client cap on uploads is 20 MiB (20,971,520 bytes), not

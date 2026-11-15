@@ -1,6 +1,7 @@
 {
-  "description": "A call naming a region the component does not have is 422 invalid_request.",
+  "description": "A call naming a region the component does not have is a sealed 404 unknown_component, and the method does not run.",
   "sections": [
+    "§3",
     "§10.5"
   ]
 }
