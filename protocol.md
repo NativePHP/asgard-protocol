@@ -349,9 +349,11 @@ business. An address shares one namespace with server screen addresses
 ([§12.1](#121-screens)), so a component address MUST NOT also be a screen's address.
 
 **The server MUST NOT turn an address into the name of code and load it.** The
-address arrives from a client and is therefore attacker-controlled. Turning it
-into a class or module name and instantiating it is arbitrary object
-instantiation.
+address arrives from a client, so it is untrusted input. Most clients are the
+app as shipped, but the threat model assumes some are hostile ([§7.1](#71-threat-model)), and
+the server cannot tell which. If an address were turned into a class or module
+name and instantiated, a hostile client could make the server create any
+object it likes.
 
 Instead the server MUST resolve it through a table its developer writes, from
 address to server component. Server screens join the same table ([§12.1](#121-screens)).
