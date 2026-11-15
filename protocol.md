@@ -197,13 +197,15 @@ The protocol has no field for the platform, app version or anything else
 about the client. A client that wants the server to know such a thing sends
 it as part of the state, where it is checked and cached like any other value.
 
-The answer has `fragments`, one part per region, keyed by region name. Each
+The answer has `delta`, the state the server changed ([§5.4](#54-state-sent-back)), and
+`fragments`, one part per region, keyed by region name. Each
 part carries the region's fragment ([§9](#9-fragment-format)), its version token ([§8.1](#81-the-push-stream)) and
 when it was made ([§8.3](#83-caching)):
 
 ```json
 {
   "protocol": 1,
+  "delta": {},
   "fragments": {
     "stats": {
       "version": "q3V0bG9yZW1pcHN1",
@@ -218,6 +220,7 @@ when it was made ([§8.3](#83-caching)):
 ```
 
 A server screen's part carries `chrome` too ([§12.2](#122-chrome)). A request may also
+name the state members the server must not change, in `read_only` ([§5.4](#54-state-sent-back)), and
 declare the copies of this component's regions the client holds, in `cache`,
 and say it was sent because of a push, in `reason`. A server may then answer
 a part with `{"cached":true}` instead of a fragment. Both are in [§8.3](#83-caching).
@@ -249,6 +252,7 @@ before it is drawn:
 ```json
 {
   "protocol": 1,
+  "delta": {},
   "fragments": {
     "stats": {
       "version": "q3V0bG9yZW1pcHN1",
@@ -408,6 +412,77 @@ the way the section that defines it says.
 
 Ignoring a member is not the same as accepting a value. A known member with a
 value of the wrong type is still an error wherever this document says so.
+
+### 5.4 State sent back
+
+Every answer from `{base}/render`, `{base}/call` and `{base}/upload` carries
+`delta`: the client state the server changed while it handled the request.
+That holds for a region request, a batch, a server screen, an action, a
+method call and an upload alike, so the client's state always follows what
+the server did.
+
+```json
+{
+  "protocol": 1,
+  "delta": {"greeting": "Good morning"},
+  "fragments": {
+    "stats": {
+      "version": "q3V0bG9yZW1pcHN1",
+      "made_at": 1763150000123,
+      "fragment": {
+        "type": "text",
+        "props": {"text": "42 sales"}
+      }
+    }
+  }
+}
+```
+
+- `delta` MUST be present, and MUST be an object. It is `{}` when nothing
+  changed.
+- It holds the members of the state whose values, after everything the
+  server ran for the request, differ from what the client sent. A member set
+  for the first time counts. A server MAY also include members it works out
+  afresh on every request, even when their values did not change.
+- Each value MUST be a plain JSON value, or the answer is `500 invalid_delta`.
+- An answer has one `delta` for the whole request, however many regions it
+  renders, since a request is for one component and one state.
+
+The server renders after the state has settled, so the fragments in an
+answer always match its delta. The client MUST apply the delta before it
+paints any fragment in the answer. It MUST apply each member under
+compare-and-set: only if it still holds the value it sent. The delta may
+change members the app does not let its own UI write. That restriction binds
+the client's UI, not the server.
+
+**Read-only members.** A request that sends state MAY also send `read_only`:
+the names of state members the server may read but MUST NOT change.
+
+```json
+{
+  "protocol": 1,
+  "component": "app.native.screens.home",
+  "regions": ["stats"],
+  "state": {"period": "week", "user_id": 7},
+  "read_only": ["user_id"]
+}
+```
+
+- `read_only` is a list of distinct strings, each the name of a member of
+  `state`. A server MUST answer any other shape with `422 invalid_request`.
+- A client SHOULD leave it out when it is empty. A member the client works
+  out from other state, rather than holds, SHOULD be in it.
+- A server MUST NOT put a read-only member in `delta`, even when something
+  it ran changed that member. It SHOULD make that visible to the developer,
+  by logging it or, in development, by failing the request with
+  `500 read_only_changed`.
+- A client MUST ignore a member of `delta` that its request named in
+  `read_only`, and SHOULD log it.
+
+`read_only` limits what comes back, not what the server may read. A
+read-only member is still sent in `state`, and is still untrusted input
+([§5.1](#51-client-state)). A stream subscription carries no `read_only`, since the stream
+sends no delta.
 
 ## 6. Sessions
 
@@ -1021,6 +1096,7 @@ region, so the stream sends the region again when it connects.
 ```json
 {
   "protocol": 1,
+  "delta": {},
   "fragments": {
     "screen": {
       "version": "q3V0bG9yZW1pcHN1",
@@ -1917,9 +1993,11 @@ An argument the method cannot take MUST be a `422`, not a `500`. Everything in
 MUST authorize against the bearer identity ([§7.5](#75-authentication-is-separate)), never against what it was
 sent.
 
-An action is stateless. Changes it makes to the component's state last for
-that request only and MUST NOT be sent back as client state. A server that
-needs to remember something across taps stores it itself.
+Changes an action makes to the component's state come back in the answer's
+`delta` ([§5.4](#54-state-sent-back)), and the client applies them before it paints. The server
+renders after the action runs, so the action's own region already shows
+them. Anything a server needs to remember across taps that does not belong
+in the client's state, it stores itself ([§5.2](#52-server-session-state)).
 
 #### Redrawing other regions
 
@@ -1935,6 +2013,7 @@ which is always there. A region named twice is rendered once.
 ```json
 {
   "protocol": 1,
+  "delta": {},
   "fragments": {
     "greeting": {
       "version": "bG9yZW1pcHN1cTNW",
@@ -1974,6 +2053,7 @@ exist:
 ```json
 {
   "protocol": 1,
+  "delta": {},
   "fragments": {
     "greeting": {
       "version": "bG9yZW1pcHN1cTNW",
@@ -2006,7 +2086,9 @@ for a screen that has closed, does nothing.
 **Other clients.** The server pushes ([§8.1](#81-the-push-stream)). A hint only reaches the client that
 sent the request.
 
-`fragments` and `refresh` MUST be present only when the method asked for them.
+`refresh` MUST be present only when the method asked for it. In a method
+call's answer, `fragments` MUST be present only when the method or the
+request asked for regions ([§10.5](#105-method-calls)).
 An answer that carries inline regions MUST NOT be compressed unless its own region
 and all of them allow it ([§7.4](#74-encryption)).
 
@@ -2105,28 +2187,36 @@ calls directly, rather than a tap in a fragment. It goes to its own endpoint,
 }
 ```
 
-The body MAY also carry `cache` ([§8.3](#83-caching)) for the regions the method might
-draw again. It MUST NOT carry `reason`.
+The body MAY also carry:
 
-A method call has its own endpoint because it is not about a region. It
-names no region, and its answer is a `delta` (below), not a region answer.
-If calls went to `{base}/render`, every check there would need an exception
-for them.
+- `read_only`, the state members the server must not change ([§5.4](#54-state-sent-back));
+- `regions`, the regions of this component the client wants drawn again
+  after the method runs;
+- `cache` ([§8.3](#83-caching)), for the regions the answer might draw.
+
+It MUST NOT carry `reason`.
+
+A method call has its own endpoint because it is not about a region. It is
+about a method, and its answer is the state that method left. If calls went
+to `{base}/render`, every check there would need an exception for them.
 
 The server restores the component from the state as for a render, runs the
-method of that name, and answers with `delta`: the state members whose values
-the method changed. A member the method set for the first time counts.
+method of that name, and answers with `delta` ([§5.4](#54-state-sent-back)):
 
 ```json
 {"protocol": 1, "delta": {"roll": 4}}
 ```
 
-`delta` MUST always be an object. Each value MUST be a plain JSON value, or the
-answer is `500 invalid_delta`.
+The client decides which of the component's regions a call redraws, if any,
+by naming them in `regions`. The server checks those names as it would a
+region request's ([§3.1](#31-when-the-client-asks)): an unknown one is `404 unknown_component`, and its
+limit on regions per request applies. With no `regions`, a call changes
+state only, unless the method itself asks for more.
 
-A method that asked for other regions to be drawn again ([§10.2](#102-server-actions-the-default)) also gets
-`fragments`, the regions of this component it named, rendered after the delta
-is worked out, and `refresh`, the hints for other components:
+The answer carries `fragments` for the regions the request named and the
+regions of this component the method asked for ([§10.2](#102-server-actions-the-default)), each rendered once,
+after the delta is worked out. It carries `refresh` for the method's hints
+for other components:
 
 ```json
 {
@@ -2150,11 +2240,6 @@ instance under the rules of [§10.2](#102-server-actions-the-default), then hand
 the result to the app code that made the call. A call answer MUST NOT be
 compressed, fragments or not, since the delta can mix the server's values with
 text the client chose ([§7.4](#74-encryption)).
-
-The delta may change state members the app does not let its own UI write.
-That restriction binds the client's UI, not the server. The client MUST apply
-each member under compare-and-set: only if it still holds the value it was
-sent with.
 
 A server MUST run `method` only under the rules of [§10.2](#102-server-actions-the-default). The method must be
 on the same list a tap's action is checked against. Otherwise the server
@@ -2208,8 +2293,10 @@ the method accepts. It MUST write the bytes to a temporary file it names
 itself, and keep the filename, cleaned, only as the file's original name. It
 deletes the temporary file when the method returns.
 
-The answer is a call's ([§10.5](#105-method-calls)): `{"protocol": 1, "delta": {...}}`, plus
-`fragments` and `refresh` when the method asked for them. The client
+The header MAY carry `read_only`, `regions` and `cache` as a call's body
+does. The answer is a call's ([§10.5](#105-method-calls)): `{"protocol": 1, "delta": {...}}`, plus
+`fragments` for the regions the request named or the method asked for, and
+`refresh` for the method's hints. The client
 handles it exactly as it does a call's: the delta under compare-and-set,
 then the regions, then the hints.
 
@@ -2289,6 +2376,7 @@ for it, carries the chrome next to the fragment:
 ```json
 {
   "protocol": 1,
+  "delta": {},
   "fragments": {
     "screen": {
       "version": "q3V0bG9yZW1pcHN1",

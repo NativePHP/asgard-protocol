@@ -60,6 +60,15 @@
   client's token instead of a signal or fragment, when its records cover
   every step. It may also wait briefly for the record of the newest step
   before falling back (§8.2).
+- Every answer from render, call and upload carries `delta`, the client
+  state the server changed (new §5.4). Region requests, batches, server
+  screens and actions used to throw state changes away. An action is no
+  longer stateless: its changes come back in the delta.
+- Requests that send state may name members the server must not change, in
+  `read_only` (§5.4). The server never puts them in a delta, and the client
+  ignores them if it does.
+- A method call or upload may name `regions` to draw again after the method
+  runs (§10.5), as well as any the method asks for.
 
 ## Draft 3 (2026-11-14)
 
