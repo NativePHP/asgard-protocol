@@ -1908,10 +1908,10 @@ calls directly, rather than a tap in a fragment. It goes to its own endpoint,
 The body MAY also carry `cache` ([§8.2](#82-caching)) for the regions the method might
 draw again. It MUST NOT carry `reason`.
 
-Its own endpoint rather than render with another member, because nothing
-about it is a region: there is no region to name, and the answer is a
-different shape. Folding it into render would have made every render check
-carry a "unless this is a call" branch.
+A method call has its own endpoint because it is not about a region. It
+names no region, and its answer is a `delta` (below), not a region answer.
+If calls went to `{base}/render`, every check there would need an exception
+for them.
 
 The server restores the component from the state as for a render, runs the
 method of that name, and answers with `delta`: the state members whose values
