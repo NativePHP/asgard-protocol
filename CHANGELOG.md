@@ -29,6 +29,11 @@
   it did not ask for, apart from an action's redraws (§3.1). A missing own
   region fails only that region. A part may leave out `version` when the
   server cannot read its push counters (§8.1).
+- New §7.7 on floods: cheap rejections, rate-limiting handshakes, a
+  hard-to-guess `{base}`, and why the session id stays out of the URL. New
+  open question 13 on app attestation at the handshake.
+- §4 calls an address from a client untrusted input rather than
+  attacker-controlled.
 - The fixed limit of 16 regions per request is gone. A server SHOULD set its
   own limit and answer a request over it with `422 too_many_regions`; a
   client may split the regions across smaller requests and try again.

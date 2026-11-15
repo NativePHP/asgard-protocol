@@ -820,6 +820,32 @@ A client MUST check a response in the same order and MUST keep the placeholder
 on any failure. It MUST NOT render a fragment whose signature did not verify,
 and the same holds for pushed events ([§8.1](#81-the-push-stream)).
 
+### 7.7 Floods
+
+Asgard does not stop a client sending a server more requests than it can
+handle. That is the deployment's job, but a few things make it easier.
+
+- **Rejections are cheap.** The early checks in [§7.6](#76-rejecting-early) cost one session
+  lookup and a digest before anything is decrypted or parsed, so a flood of
+  bad requests is turned away for little work.
+- **The handshake is the costly one.** [§6.1](#61-handshake) does a key agreement, and its
+  URL is fixed. A server SHOULD rate-limit handshakes, for example by client
+  address.
+- **Limit what one request can ask for.** See the limit on regions per
+  request ([§3.1](#31-when-the-client-asks)).
+- **`{base}` can be hard to guess.** Each deployment chooses its own base URL
+  ([§8](#8-transport)), such as `https://api.example.com/x7k2q9`, so there is no shared
+  path to scan for. This only keeps out traffic that is looking for Asgard
+  servers in general. Anyone with the app can read the base URL from it.
+
+Moving the session id into the URL would not help. A server does the same
+lookup to reject a request whatever part of it carries the id, and URLs are
+logged far more widely than headers, which would spread a value that links
+all of one client's requests.
+
+None of this tells the real app from a script that has extracted its key
+([§7.1](#71-threat-model)). Open question 13 asks whether the handshake should.
+
 ## 8. Transport
 
 A client is configured with one base URL for its server, written `{base}`
@@ -2293,6 +2319,10 @@ there is no way to leave the app.
     Whether to replace it before 1.0, for example with 401 and a
     `WWW-Authenticate` challenge ([RFC 9110 §11.6.1](https://www.rfc-editor.org/rfc/rfc9110#section-11.6.1)) that tells a lost session
     apart from a rejected bearer token, is open.
+13. Whether the handshake should accept proof that the client is the app as
+    shipped, from the platform's app attestation service, so a server can
+    refuse sessions to scripts. It would be optional, since not every client
+    has such a service.
 
 ## References
 
