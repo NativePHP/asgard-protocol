@@ -1790,6 +1790,15 @@ apart from the well-known types at the end of this section.
 The core types are `column`, `row`, `stack`, `scroll_view`, `text`, `button`,
 `image`, `spacer` and `divider`.
 
+A type name says what a node is for, not which component draws it. Each
+client maps the names to its own platform's components, and picks the one
+that best fits what the type and its props describe. A `button` might
+become a system button on one platform and a Material button on another,
+and a `scroll_view` whatever scrolling container the platform provides. The
+same goes for `class` names and props: a client draws them in the way that
+suits its platform, so long as it keeps what they mean. A server describes
+the form it expects, never the component that draws it.
+
 #### Common to every node
 
 Every node may carry `key`, `class` and callback slots ([§9.1](#91-node-shape)). No core type
