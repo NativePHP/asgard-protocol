@@ -4,7 +4,7 @@
   "spec": {
     "document": "protocol.md",
     "draft": 4,
-    "status": "unreleased"
+    "status": "released"
   },
 
   "protocol": {

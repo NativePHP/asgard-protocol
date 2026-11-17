@@ -1,6 +1,6 @@
 # The Asgard Protocol
 
-**Status:** Draft 3, 2026-11-14.
+**Status:** Draft 4, 2026-11-17.
 
 This draft is not stable. It may change in incompatible ways before 1.0.
 Please send feedback as issues on this repository.
