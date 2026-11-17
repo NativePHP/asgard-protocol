@@ -1,0 +1,18 @@
+{
+  "endpoint": "upload",
+  "upload": {
+    "header": {
+      "protocol": 1,
+      "component": "conformance.counter",
+      "method": "attach",
+      "args": [
+        "Hello"
+      ],
+      "state": {},
+      "filename": "note.txt",
+      "mime": "text/plain",
+      "size": 99
+    },
+    "file": "hello asgard\n"
+  }
+}

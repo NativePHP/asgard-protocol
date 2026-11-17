@@ -1,0 +1,12 @@
+{
+  "endpoint": "render",
+  "body": {
+    "protocol": 1,
+    "component": "conformance.counter",
+    "regions": [
+      "big",
+      "quiet"
+    ],
+    "state": {}
+  }
+}

@@ -2,6 +2,10 @@
 
 ## Draft 4 (unreleased)
 
+- New `schema/constants.json`, with its own schema, holding the spec's
+  numbers, names and enums with the section each comes from. New
+  `conformance/` suite: byte-exact vectors, golden server cases run against
+  a small set of fixture components, and a runner. No wire change.
 - §1 now contrasts Asgard with the usual setup, where the server is the
   source of truth. The client is the source of truth for its own state, but
   that state is still untrusted input to the server.
@@ -69,10 +73,69 @@
   ignores them if it does.
 - A method call or upload may name `regions` to draw again after the method
   runs (§10.5), as well as any the method asks for. An unknown name is
-  `422 invalid_request`, and the method does not run.
+  `404 unknown_component`, and the method does not run.
 - A region or action answer may be compressed only when its delta is `{}`
   and every region in it allows it. An action's answer no longer simply
   follows its region (§7.4).
+- "Canonical state" is defined (§5.1): the state object serialized with the
+  JSON Canonicalization Scheme, RFC 8785. Two states are the same when their
+  canonical states are the same bytes. It is used wherever the spec groups
+  or matches by state: stream subscriptions and their ids, matching events
+  and patches to instances, shared renders, and declaring a cached copy.
+  RFC 8785 joins the references, and the vectors gain canonical states.
+- Region names MUST match `^[A-Za-z0-9_.:-]{1,100}$` (§3), the pattern the
+  reference implementations already use. §3 now says once how a server
+  checks a region name wherever a request names one (render, batch, action,
+  a call's or upload's `regions`, a stream subscription): a malformed name is
+  `422 invalid_request`, and a well-formed name the component does not have
+  is `404 unknown_component`.
+- A stream subscription's `regions` no longer has a fixed limit of 16. It is
+  held to the server's limit on regions per request, like render, and a
+  subscription over it gets `422 too_many_regions`. A client may split it
+  across several subscriptions (§8.1). The limit of 1 to 16 subscriptions
+  stays.
+- Every request after the handshake MUST carry `Asgard-Protocol: 1`, the
+  session's protocol version (§6.2). Every sealed response carries it too.
+  One that is missing or names a version the server does not speak gets the
+  early rejection `422 {"error":"unsupported_protocol","protocols":[1]}`.
+  The handshake carries its version in the body, and a server ignores the
+  header there.
+- Versions are agreed at the handshake (§6.1, §11). The client sends
+  `protocols`, every version it speaks, in place of `protocol`. The server
+  picks the highest one it also speaks and returns it as `protocol` in the
+  handshake answer. With none in common it refuses with
+  `422 unsupported_protocol`, as before. Both sides may speak several
+  versions. A request whose `Asgard-Protocol` is not its session's version
+  gets the same rejection.
+- §11 now says when the version goes up (only for changes an older peer
+  could get wrong) and that it stays 1 across drafts until 1.0.
+- A request whose `Content-Encoding` is missing or not `aes128gcm` gets the
+  early rejection `415 {"error":"unsupported_coding"}` (§7.4), which SHOULD
+  carry `Accept-Encoding: aes128gcm`. The spec named no status before.
+- A read (a render without an action, a stream request or the route list)
+  whose signature carries a nonce is refused with a sealed
+  `422 invalid_request` (§7.3).
+- §7.6 lists the checks as numbered steps with the error each one gives:
+  `Asgard-Protocol` and `Content-Encoding` come first, the nonce rules are
+  split into what can be checked before decrypting and after, and the first
+  seven are early rejections.
+- Every error now has an `error` code. The handshake's 422s for a bad
+  `client_public`, a bad `elements` or an unusable body are
+  `invalid_request`, and so are a bad stream subscription, a stream request
+  with an action, and an argument an action cannot take. A redraw or hint
+  the server's own method gets wrong (a name that is not a region, an
+  address that does not exist, or more than 16 of either) is the new
+  `500 invalid_redraw` (§10.2).
+- Args that do not fit an upload method are `422 invalid_request`, as for a
+  call, not `404 unknown_method` (§10.6).
+- The `cached` example in §8.3 now carries `delta`, as every render answer
+  must (§5.4).
+- The recommended client cap on uploads is 20 MiB (20,971,520 bytes), not
+  "20 MB" (§10.6). Other sizes in the spec are given in bytes, KiB or MiB.
+- §7.4 no longer claims the fixed gzip settings give the same bytes on any
+  server. They keep answers comparable, but deflate builds differ, so a
+  receiver checks a compressed body by inflating it, never by comparing
+  bytes.
 - §9.7 says a type name describes what a node is for, not which component
   draws it. Each client maps the names, `class` and props to its own
   platform's components. No wire change.

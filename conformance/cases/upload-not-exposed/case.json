@@ -1,0 +1,6 @@
+{
+  "description": "A method exposed for calls but not uploads is 404 unknown_method on the upload endpoint.",
+  "sections": [
+    "§10.6"
+  ]
+}

@@ -1,0 +1,6 @@
+{
+  "description": "A call naming a method that is not exposed is 404 unknown_method.",
+  "sections": [
+    "§10.5"
+  ]
+}

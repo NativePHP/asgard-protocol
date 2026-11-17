@@ -1,0 +1,7 @@
+{
+  "description": "Any method but QUERY or POST is a plain 405.",
+  "sections": [
+    "§7.3",
+    "§8"
+  ]
+}

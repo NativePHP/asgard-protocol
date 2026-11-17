@@ -1,0 +1,6 @@
+{
+  "description": "read_only naming a member that is not in state is 422 invalid_request.",
+  "sections": [
+    "§5.4"
+  ]
+}

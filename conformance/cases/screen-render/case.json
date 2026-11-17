@@ -1,0 +1,7 @@
+{
+  "description": "A server screen renders its body as region screen, with its chrome next to the fragment.",
+  "sections": [
+    "§12.1",
+    "§12.2"
+  ]
+}

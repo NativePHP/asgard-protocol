@@ -1,0 +1,7 @@
+{
+  "description": "A signature that does not verify is a plain 403.",
+  "sections": [
+    "§7.3",
+    "§7.6"
+  ]
+}

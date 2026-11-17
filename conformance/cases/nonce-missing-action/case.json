@@ -1,0 +1,6 @@
+{
+  "description": "An action whose signature has no nonce is a sealed 403 nonce_required, since only the body says it is an action.",
+  "sections": [
+    "§7.3"
+  ]
+}

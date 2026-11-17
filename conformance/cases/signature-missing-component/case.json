@@ -1,0 +1,6 @@
+{
+  "description": "A signature that does not cover asgard-session-id is a plain 403.",
+  "sections": [
+    "§7.3"
+  ]
+}

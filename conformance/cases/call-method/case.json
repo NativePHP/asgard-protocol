@@ -1,0 +1,7 @@
+{
+  "description": "A call runs an exposed method and answers its delta, with no fragments or refresh when empty.",
+  "sections": [
+    "§5.4",
+    "§10.5"
+  ]
+}

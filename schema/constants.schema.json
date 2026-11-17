@@ -1,0 +1,269 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "constants.schema.json",
+  "title": "Asgard protocol constants",
+  "description": "The shape of constants.json: the numbers, names and enums of protocol.md, each tied to the section it comes from.",
+  "type": "object",
+  "required": [
+    "spec", "protocol", "encodings", "endpoints", "methods", "headers", "statuses", "errors", "early_rejections",
+    "check_order", "failure_reasons", "signature", "crypto", "timing", "limits", "state", "reasons", "events",
+    "patch", "elements", "slots", "unknown_members_refused_in", "screens", "bodies"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": { "type": "string" },
+    "description": { "type": "string" },
+    "spec": {
+      "type": "object",
+      "required": ["document", "draft", "status"],
+      "properties": {
+        "document": { "const": "protocol.md" },
+        "draft": { "type": "integer", "minimum": 1 },
+        "status": { "enum": ["unreleased", "released"] }
+      },
+      "additionalProperties": false
+    },
+    "protocol": {
+      "allOf": [{ "$ref": "#/$defs/entry" }],
+      "properties": { "value": { "type": "integer", "minimum": 1 } }
+    },
+    "encodings": {
+      "allOf": [{ "$ref": "#/$defs/entry" }],
+      "properties": { "value": { "$ref": "#/$defs/names" } }
+    },
+    "endpoints": {
+      "type": "object",
+      "required": ["section", "base", "list", "safe_requests"],
+      "properties": {
+        "section": { "$ref": "#/$defs/section" },
+        "list": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name", "path", "methods", "sealed", "nonce", "section", "used_for"],
+            "properties": {
+              "name": { "enum": ["session", "render", "stream", "call", "upload", "routes"] },
+              "path": { "type": "string", "pattern": "^/[a-z]+$" },
+              "methods": { "type": "array", "items": { "enum": ["POST", "QUERY", "POST+X-Asgard-Method"] }, "minItems": 1 },
+              "sealed": { "type": "boolean" },
+              "nonce": { "enum": ["never", "always", "with action"] },
+              "section": { "$ref": "#/$defs/section" },
+              "used_for": { "type": "string" }
+            },
+            "additionalProperties": false
+          },
+          "minItems": 6,
+          "maxItems": 6
+        }
+      }
+    },
+    "methods": { "type": "object", "required": ["section", "handshake", "preferred", "fallback", "override_header", "override_value"] },
+    "headers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "direction", "section", "note"],
+        "properties": {
+          "name": { "type": "string", "pattern": "^[A-Za-z][A-Za-z-]*$" },
+          "direction": { "enum": ["request", "response", "both"] },
+          "signed": { "oneOf": [{ "type": "boolean" }, { "const": "when present" }] },
+          "value": { "type": "string" },
+          "values": { "$ref": "#/$defs/names" },
+          "section": { "$ref": "#/$defs/section" },
+          "note": { "type": "string" }
+        },
+        "additionalProperties": false
+      }
+    },
+    "statuses": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["code", "name", "section", "used_for"],
+        "properties": {
+          "code": { "type": "integer", "minimum": 100, "maximum": 599 },
+          "name": { "type": ["string", "null"] },
+          "section": { "$ref": "#/$defs/section" },
+          "used_for": { "type": "string" }
+        },
+        "additionalProperties": false
+      }
+    },
+    "errors": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["error", "status", "sealed", "endpoints", "section", "meaning"],
+        "properties": {
+          "error": { "type": "string", "pattern": "^[a-z][a-z_]*$" },
+          "status": { "type": "integer", "minimum": 400, "maximum": 599 },
+          "sealed": { "oneOf": [{ "type": "boolean" }, { "type": "string" }] },
+          "endpoints": { "type": "array", "items": { "enum": ["session", "render", "stream", "call", "upload", "routes"] }, "minItems": 1 },
+          "level": { "$ref": "#/$defs/level" },
+          "section": { "$ref": "#/$defs/section" },
+          "meaning": { "type": "string" }
+        },
+        "additionalProperties": false
+      }
+    },
+    "early_rejections": {
+      "type": "object",
+      "required": ["section", "value"],
+      "properties": {
+        "value": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["status", "body"],
+            "properties": {
+              "status": { "type": "integer" },
+              "body": { "type": "object", "required": ["error"], "properties": { "error": { "type": "string" }, "protocols": { "type": "array", "items": { "type": "integer", "minimum": 1 }, "minItems": 1 } }, "additionalProperties": false }
+            },
+            "additionalProperties": false
+          }
+        }
+      }
+    },
+    "check_order": { "$ref": "#/$defs/entry" },
+    "failure_reasons": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["reason", "section", "meaning"],
+        "properties": {
+          "reason": { "type": "string" },
+          "section": { "$ref": "#/$defs/section" },
+          "meaning": { "type": "string" }
+        },
+        "additionalProperties": false
+      }
+    },
+    "signature": {
+      "type": "object",
+      "required": ["section", "label", "tag", "alg", "digest", "request", "response", "event"],
+      "properties": {
+        "label": { "const": "asgard" },
+        "tag": { "const": "asgard/1" },
+        "alg": { "const": "hmac-sha256" },
+        "request": { "type": "object", "required": ["components", "optional_components", "params", "nonce_param"] },
+        "response": { "type": "object", "required": ["components", "optional_components", "params"] }
+      }
+    },
+    "crypto": { "type": "object", "required": ["handshake", "keys", "content_encoding", "nonce", "gzip"] },
+    "timing": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["value", "level", "section"],
+        "properties": {
+          "value": { "type": "number" },
+          "level": { "$ref": "#/$defs/level" },
+          "section": { "$ref": "#/$defs/section" },
+          "note": { "type": "string" }
+        },
+        "additionalProperties": false
+      }
+    },
+    "limits": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["section"],
+        "properties": {
+          "section": { "$ref": "#/$defs/section" },
+          "level": { "$ref": "#/$defs/level" },
+          "pattern": { "type": "string", "format": "regex" },
+          "item_pattern": { "type": "string", "format": "regex" },
+          "note": { "type": "string" }
+        }
+      }
+    },
+    "state": { "type": "object", "required": ["section"] },
+    "reasons": { "$ref": "#/$defs/entry" },
+    "events": {
+      "type": "object",
+      "required": ["section", "names", "envelope", "enc", "messages"],
+      "properties": {
+        "names": { "$ref": "#/$defs/names" },
+        "enc": { "$ref": "#/$defs/names" }
+      }
+    },
+    "patch": {
+      "type": "object",
+      "required": ["section", "ops", "members"],
+      "properties": { "ops": { "$ref": "#/$defs/names" } }
+    },
+    "elements": {
+      "type": "object",
+      "required": ["section", "core", "well_known", "reserved", "type_pattern", "reserved_prop_prefixes", "media_props"],
+      "properties": {
+        "core": { "$ref": "#/$defs/names" },
+        "well_known": { "$ref": "#/$defs/names" },
+        "reserved": {
+          "type": "object",
+          "required": ["section", "chrome", "region"],
+          "properties": {
+            "section": { "$ref": "#/$defs/section" },
+            "chrome": { "$ref": "#/$defs/names" },
+            "region": { "$ref": "#/$defs/names" }
+          },
+          "additionalProperties": false
+        }
+      }
+    },
+    "slots": {
+      "type": "object",
+      "required": ["section", "names", "press", "value", "kinds", "targets", "transitions"],
+      "properties": {
+        "names": { "$ref": "#/$defs/names" },
+        "targets": { "$ref": "#/$defs/names" },
+        "transitions": { "$ref": "#/$defs/names" }
+      }
+    },
+    "unknown_members_refused_in": { "$ref": "#/$defs/entry" },
+    "screens": { "type": "object", "required": ["section", "body_region", "chrome_members"] },
+    "bodies": {
+      "type": "object",
+      "required": ["section"],
+      "additionalProperties": {
+        "oneOf": [
+          { "$ref": "#/$defs/section" },
+          {
+            "type": "object",
+            "properties": {
+              "required": { "$ref": "#/$defs/names" },
+              "optional": { "$ref": "#/$defs/names" },
+              "refused": { "$ref": "#/$defs/names" }
+            }
+          }
+        ]
+      }
+    }
+  },
+  "$defs": {
+    "section": {
+      "type": "string",
+      "description": "Where in protocol.md the value comes from: one or more § references, or a heading name.",
+      "pattern": "^(§[0-9]+(\\.[0-9]+)?(, §[0-9]+(\\.[0-9]+)?)*|Building on HTTP)$"
+    },
+    "level": {
+      "description": "The requirement level the spec gives, or `default` for a value it calls sensible or that the reference implementations use.",
+      "enum": ["MUST", "SHOULD", "RECOMMENDED", "MAY", "default"]
+    },
+    "names": {
+      "type": "array",
+      "items": { "type": "string" },
+      "uniqueItems": true
+    },
+    "entry": {
+      "type": "object",
+      "required": ["value", "section"],
+      "properties": {
+        "value": {},
+        "section": { "$ref": "#/$defs/section" },
+        "level": { "$ref": "#/$defs/level" },
+        "note": { "type": "string" }
+      }
+    }
+  }
+}

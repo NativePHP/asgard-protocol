@@ -1,0 +1,7 @@
+{
+  "description": "An upload whose signature has no nonce is a plain 403 nonce_required.",
+  "sections": [
+    "§7.3",
+    "§10.6"
+  ]
+}

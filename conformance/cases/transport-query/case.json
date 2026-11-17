@@ -1,0 +1,6 @@
+{
+  "description": "A render sent as QUERY is answered. Fails when something in front of the server refuses QUERY.",
+  "sections": [
+    "§8"
+  ]
+}

@@ -1,0 +1,6 @@
+{
+  "description": "A nonce used once in a session is refused the second time with a plain 403.",
+  "sections": [
+    "§7.3"
+  ]
+}

@@ -1,0 +1,6 @@
+{
+  "description": "An expires more than 300 seconds after created is a plain 403.",
+  "sections": [
+    "§7.3"
+  ]
+}

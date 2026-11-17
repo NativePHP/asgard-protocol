@@ -1,0 +1,18 @@
+{
+  "status": 200,
+  "sealed": true,
+  "headers": {
+    "asgard-content-coding": "identity"
+  },
+  "body": {
+    "$partial": true,
+    "protocol": 1,
+    "delta": {
+      "attachment": {
+        "size": 13,
+        "sha256": "{{=upload_sha256}}",
+        "caption": "Hello"
+      }
+    }
+  }
+}

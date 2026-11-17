@@ -1,0 +1,420 @@
+{
+  "$schema": "constants.schema.json",
+  "description": "Every number, name and enum an Asgard implementation would otherwise copy out of protocol.md, each with the section it comes from. Where the spec gives a level, `level` is MUST, SHOULD, RECOMMENDED or MAY; `default` marks a value the spec calls sensible or that the reference implementations use, which an implementation may change.",
+  "spec": {
+    "document": "protocol.md",
+    "draft": 4,
+    "status": "unreleased"
+  },
+
+  "protocol": {
+    "value": 1,
+    "section": "§11",
+    "note": "The version this document defines. It is the integer in `protocol` in every body and in the handshake answer, and the value of the Asgard-Protocol header as a string. The client offers every version it speaks in the handshake's `protocols` (1 to 16 distinct positive integers) and the server picks the highest it also speaks. Either side MAY speak several. Until 1.0 the version stays 1 across drafts.",
+    "offer_max": 16
+  },
+  "encodings": {
+    "value": ["tree/json"],
+    "section": "§9",
+    "note": "Values of `accepts` in the handshake and `encoding` in its answer."
+  },
+
+  "endpoints": {
+    "section": "§8",
+    "base": {
+      "note": "{base} is an https: URL with no query, no fragment and no trailing slash. A development build MAY accept http:; a production build MUST NOT.",
+      "schemes": ["https"],
+      "development_schemes": ["http"]
+    },
+    "list": [
+      { "name": "session", "path": "/session", "methods": ["POST"], "sealed": false, "nonce": "never", "section": "§6.1", "used_for": "The handshake. Always a plain POST, never with X-Asgard-Method." },
+      { "name": "render", "path": "/render", "methods": ["QUERY", "POST+X-Asgard-Method"], "sealed": true, "nonce": "with action", "section": "§3.1, §10.2", "used_for": "Region requests, batches, server screens and actions." },
+      { "name": "stream", "path": "/stream", "methods": ["QUERY", "POST+X-Asgard-Method"], "sealed": true, "nonce": "never", "section": "§8.1", "used_for": "The push stream. The request is sealed; the answer's headers are not, and each event is sealed on its own." },
+      { "name": "call", "path": "/call", "methods": ["QUERY", "POST+X-Asgard-Method"], "sealed": true, "nonce": "always", "section": "§10.5", "used_for": "Method calls." },
+      { "name": "upload", "path": "/upload", "methods": ["QUERY", "POST+X-Asgard-Method"], "sealed": true, "nonce": "always", "section": "§10.6", "used_for": "Uploads. The decrypted body is a frame, not JSON." },
+      { "name": "routes", "path": "/routes", "methods": ["QUERY", "POST+X-Asgard-Method"], "sealed": true, "nonce": "never", "section": "§12.3", "used_for": "The server's route list." }
+    ],
+    "safe_requests": {
+      "value": ["render without action", "routes"],
+      "section": "§8",
+      "note": "Only these may probe the transport as QUERY. Until the probe settles, every other request goes as POST plus X-Asgard-Method: QUERY."
+    }
+  },
+
+  "methods": {
+    "section": "§8",
+    "handshake": "POST",
+    "preferred": "QUERY",
+    "fallback": "POST",
+    "override_header": "X-Asgard-Method",
+    "override_value": "QUERY",
+    "uppercase": { "value": true, "level": "MUST", "section": "§8" },
+    "fallback_on_status": { "value": [405, 501], "section": "§8", "note": "Or any answer that is not a valid Asgard answer, on the first safe request after a handshake." }
+  },
+
+  "headers": [
+    { "name": "Asgard-Session-Id", "direction": "request", "signed": true, "section": "§6.2", "note": "On every request after the handshake. Its value is the session id, which is also the signature keyid and the aes128gcm keyid." },
+    { "name": "Asgard-Protocol", "direction": "both", "signed": true, "value": "1", "section": "§6.2, §7.3", "note": "The protocol version as a decimal integer. Every request after the handshake MUST carry it, and every sealed response does; a covered component of both. A request with it missing or unsupported is the early rejection 422 unsupported_protocol, and so is one whose version is not the one its session was made with. The handshake carries its version in the body instead, and a server ignores the header on {base}/session." },
+    { "name": "X-Asgard-Method", "direction": "request", "signed": "when present", "value": "QUERY", "section": "§8", "note": "Turns a POST into a QUERY. Never on {base}/session." },
+    { "name": "Authorization", "direction": "request", "signed": "when present", "section": "§7.3, §7.5", "note": "The app's own bearer token. Covered when, and only when, the request carries it." },
+    { "name": "Content-Type", "direction": "both", "signed": true, "value": "application/json", "section": "§7.4, §8", "note": "A client MUST send it. It stays application/json for encrypted bodies and upload frames. A stream answer is text/event-stream." },
+    { "name": "Content-Encoding", "direction": "both", "signed": true, "value": "aes128gcm", "section": "§7.4", "note": "Always aes128gcm on a sealed message. A server MUST refuse a request with any other coding, or none, with the early rejection 415 unsupported_coding, which SHOULD carry Accept-Encoding: aes128gcm." },
+    { "name": "Content-Digest", "direction": "both", "signed": true, "section": "§7.3", "note": "sha-256 over the body as sent (the ciphertext)." },
+    { "name": "Asgard-Content-Coding", "direction": "response", "signed": true, "values": ["gzip", "identity"], "section": "§7.4", "note": "On every sealed response. Any other value, or no header, MUST be refused." },
+    { "name": "Asgard-Cache", "direction": "response", "signed": "when present", "values": ["invalidate"], "section": "§8.3", "note": "One lowercase word of up to 32 letters. A client ignores any value but invalidate. Unsigned answers never carry it." },
+    { "name": "Signature-Input", "direction": "both", "section": "§7.3", "note": "RFC 9421. The Asgard member is labelled asgard." },
+    { "name": "Signature", "direction": "both", "section": "§7.3", "note": "RFC 9421. The Asgard member is labelled asgard." },
+    { "name": "Last-Event-ID", "direction": "request", "signed": false, "section": "§8.1", "note": "Sent on a stream reconnect. Not signed, and a server MUST ignore it: version tokens decide what is sent on connect." }
+  ],
+
+  "statuses": [
+    { "code": 200, "name": "OK", "section": "Building on HTTP", "used_for": "A successful answer." },
+    { "code": 204, "name": "No Content", "section": "§8.1", "used_for": "Ending a push stream. The client MUST NOT reconnect until the set changes." },
+    { "code": 401, "name": "Unauthorized", "section": "§6.3, §7.5", "used_for": "The app's bearer token was rejected. The body is the app's. Handed to the app's auth flow." },
+    { "code": 403, "name": "Forbidden", "section": "§6.3, §7.3", "used_for": "A failed check, a reused or missing nonce, or an unknown key at the handshake. The client MUST NOT retry." },
+    { "code": 404, "name": "Not Found", "section": "§4, §10.2, §10.5", "used_for": "An unknown address, region, action or method." },
+    { "code": 405, "name": "Method Not Allowed", "section": "§8", "used_for": "A method the endpoint does not accept." },
+    { "code": 413, "name": "Content Too Large", "section": "§10.6", "used_for": "An upload over its size limit." },
+    { "code": 415, "name": "Unsupported Media Type", "section": "§7.4, §10.6", "used_for": "An upload of a type the method does not accept, or a request content coding other than aes128gcm." },
+    { "code": 419, "name": null, "section": "§6.3", "used_for": "The session is missing, unknown or expired. The client re-handshakes once and retries once. Not a registered code (open question 12)." },
+    { "code": 422, "name": "Unprocessable Content", "section": "Building on HTTP, §6.2", "used_for": "A body that is well formed but wrong, or a protocol version the server does not speak." },
+    { "code": 500, "name": "Internal Server Error", "section": "§5.4, §8.1, §10.2", "used_for": "A fragment, delta or redraw the server could not produce." },
+    { "code": 501, "name": "Not Implemented", "section": "§8", "used_for": "Sent by something in front of the server that refuses QUERY. The client falls back to POST." }
+  ],
+
+  "errors": [
+    { "error": "unknown_key", "status": 403, "sealed": false, "endpoints": ["session"], "section": "§6.1", "meaning": "The handshake named a key the server does not know, or the server has none configured." },
+    { "error": "unsupported_protocol", "status": 422, "sealed": false, "endpoints": ["session", "render", "stream", "call", "upload", "routes"], "section": "§6.1, §6.2, §7.3", "meaning": "The server does not speak the client's protocol: at the handshake none of the versions in the body's `protocols`, afterwards a missing or unsupported Asgard-Protocol header, or one that is not the session's version (an early rejection). The body also carries `protocols`, the list it does speak." },
+    { "error": "unsupported_coding", "status": 415, "sealed": false, "endpoints": ["render", "stream", "call", "upload", "routes"], "section": "§7.3, §7.4", "meaning": "The request's Content-Encoding is missing or is not aes128gcm. An early rejection." },
+    { "error": "unsupported_encoding", "status": 422, "sealed": false, "endpoints": ["session"], "section": "§6.1", "meaning": "No encoding in `accepts` is one the server speaks." },
+    { "error": "method_not_allowed", "status": 405, "sealed": false, "endpoints": ["session", "render", "stream", "call", "upload", "routes"], "section": "§7.3, §8", "meaning": "On session anything but POST; elsewhere anything but QUERY or POST with X-Asgard-Method: QUERY." },
+    { "error": "too_large", "status": 413, "sealed": "either", "endpoints": ["upload"], "section": "§7.3, §10.6", "meaning": "Over the method's limit or the server's. Plain and unsigned when the server can tell from the size alone, before decrypting; sealed otherwise." },
+    { "error": "session_expired", "status": 419, "sealed": false, "endpoints": ["render", "stream", "call", "upload", "routes"], "section": "§6.3, §7.3", "meaning": "Asgard-Session-Id is missing, unknown or expired." },
+    { "error": "forbidden", "status": 403, "sealed": false, "endpoints": ["render", "stream", "call", "upload", "routes"], "section": "§7.3, §7.6", "meaning": "The digest, the signature or its freshness, a reused nonce, or decryption failed." },
+    { "error": "nonce_required", "status": 403, "sealed": "call and upload: plain; render action: sealed", "endpoints": ["render", "call", "upload"], "section": "§7.3", "meaning": "An action, method call or upload whose signature has no nonce. A call or upload is refused before decrypting; an action is only found after." },
+    { "error": "unknown_component", "status": 404, "sealed": true, "endpoints": ["render", "stream", "call", "upload"], "section": "§3, §4, §8.1, §10.5", "meaning": "An unknown address, or a well-formed region name the component does not have, wherever a request names one: a render or batch, an action, a call's or upload's regions, or a stream subscription." },
+    { "error": "unknown_action", "status": 404, "sealed": true, "endpoints": ["render"], "section": "§10.2", "meaning": "`action.call` is not a method the component exposed to clients." },
+    { "error": "unknown_method", "status": 404, "sealed": true, "endpoints": ["call", "upload"], "section": "§10.5, §10.6", "meaning": "Not a method the component exposed for calls (or, on upload, for uploads). Args that do not fit are 422 invalid_request, not this." },
+    { "error": "unsupported_type", "status": 415, "sealed": true, "endpoints": ["upload"], "section": "§10.6", "meaning": "The type sniffed from the file's bytes is not one the method accepts." },
+    { "error": "invalid_request", "status": 422, "sealed": "session: plain; elsewhere: sealed", "endpoints": ["session", "render", "stream", "call", "upload", "routes"], "section": "§3, §5.4, §6.1, §7.3, §8.1, §8.3, §10.2, §10.5, §10.6", "meaning": "A malformed body, at the handshake a bad client_public or elements, a read (render without action, stream, routes) whose signature carries a nonce, a malformed regions list or region name, a malformed read_only or cache, a bad reason, an action that does not name exactly one region, a stream request with an action or a bad subscription, an unknown member where one is refused, state or args that do not fit, or a bad upload frame." },
+    { "error": "too_many_regions", "status": 422, "sealed": true, "endpoints": ["render", "stream", "call", "upload"], "section": "§3.1, §8.1, §10.5", "meaning": "The request, or one stream subscription, names more regions than the server's limit. Nothing is rendered or streamed, and a call's method does not run." },
+    { "error": "invalid_delta", "status": 500, "sealed": true, "endpoints": ["render", "call", "upload"], "section": "§5.4", "meaning": "A delta value is not a plain JSON value." },
+    { "error": "read_only_changed", "status": 500, "sealed": true, "endpoints": ["render", "call", "upload"], "level": "SHOULD", "section": "§5.4", "meaning": "In development, the server changed a member the request named in read_only. In production it leaves the member out and logs it." },
+    { "error": "invalid_redraw", "status": 500, "sealed": true, "endpoints": ["render", "call", "upload"], "section": "§10.2", "meaning": "The method asked to redraw a name that is not a region of its component, hinted an address or region that does not exist, or asked for more than 16 inline regions or 16 hints." },
+    { "error": "invalid_fragment", "status": 500, "sealed": true, "endpoints": ["render", "stream", "call", "upload"], "section": "§8.1", "meaning": "A fragment the server cannot send, such as one using a type the client did not advertise. Named only in §8.1; the other endpoints follow the general 500 rule." }
+  ],
+
+  "early_rejections": {
+    "section": "§7.3",
+    "note": "The only unsigned answers after the handshake. A client acts on their status only, and checks the body against this list only while it probes the transport.",
+    "value": [
+      { "status": 405, "body": { "error": "method_not_allowed" } },
+      { "status": 422, "body": { "error": "unsupported_protocol", "protocols": [1] } },
+      { "status": 415, "body": { "error": "unsupported_coding" } },
+      { "status": 413, "body": { "error": "too_large" } },
+      { "status": 419, "body": { "error": "session_expired" } },
+      { "status": 403, "body": { "error": "forbidden" } },
+      { "status": 403, "body": { "error": "nonce_required" } }
+    ],
+    "optional_members": ["message"]
+  },
+
+  "check_order": {
+    "section": "§7.6",
+    "value": ["Asgard-Protocol supported", "Content-Encoding is aes128gcm", "session id known", "Content-Digest matches", "signature valid and fresh", "nonce present on a call or upload, and any nonce not seen before", "decrypt", "nonce on every action and none on a read", "bearer token", "component and regions resolvable", "restore state"],
+    "early": 7,
+    "note": "A request that fails any of the first seven MUST be discarded before anything parses its body, with the unsigned early rejection for that check, and those seven MUST run ahead of the server's own request handling."
+  },
+
+  "failure_reasons": [
+    { "reason": "timeout", "section": "§10.2", "meaning": "No answer in time." },
+    { "reason": "network", "section": "§10.2", "meaning": "The request never reached the server, or nothing came back." },
+    { "reason": "server", "section": "§10.2", "meaning": "The server answered with an error, including a 419 after its one retry." },
+    { "reason": "invalid", "section": "§10.2", "meaning": "The answer failed verification, or its fragment cannot be rendered." },
+    { "reason": "unreadable", "section": "§10.6", "meaning": "Uploads only: the file cannot be read as a regular local file. Nothing was sent." },
+    { "reason": "too_large", "section": "§10.6", "meaning": "Uploads only: the file is over the client's own limit. Nothing was sent." }
+  ],
+
+  "signature": {
+    "section": "§7.3",
+    "standard": "RFC 9421",
+    "label": "asgard",
+    "tag": "asgard/1",
+    "alg": "hmac-sha256",
+    "keyid": "the session id",
+    "digest": { "header": "Content-Digest", "algorithm": "sha-256", "over": "the body as sent (ciphertext)", "section": "§7.3" },
+    "request": {
+      "components": ["@method", "@authority", "@path", "content-type", "content-encoding", "content-digest", "asgard-protocol", "asgard-session-id"],
+      "optional_components": ["x-asgard-method", "authorization"],
+      "optional_note": "Covered after the rest, in this order, when and only when the request carries them.",
+      "params": ["created", "expires", "keyid", "alg", "tag"],
+      "nonce_param": "nonce",
+      "nonce_on": ["render with action", "call", "upload"],
+      "nonce_never_on": ["render without action", "stream", "routes"],
+      "authority": "the host in lowercase, with the port when it is not the scheme's default",
+      "path": "the path as sent, without the query"
+    },
+    "response": {
+      "components": ["@status", "content-type", "content-encoding", "asgard-content-coding", "content-digest", "asgard-protocol", "signature;req;key=\"asgard\""],
+      "optional_components": ["asgard-cache"],
+      "optional_note": "asgard-cache is covered right after asgard-protocol and before \"signature\";req;key=\"asgard\", when and only when the response carries it.",
+      "params": ["created", "keyid", "alg", "tag"]
+    },
+    "event": {
+      "section": "§8.1",
+      "algorithm": "HMAC-SHA256 under sig_s",
+      "lines": ["asgard/1 event", "<the stream request's 32-byte signature, base64 with padding>", "<id>", "<event>", "<enc>", "<body>"],
+      "separator": "\n",
+      "trailing_separator": false,
+      "encoding": "base64url without padding"
+    }
+  },
+
+  "crypto": {
+    "handshake": {
+      "section": "§6.1",
+      "curve": "P-256",
+      "point_encoding": "uncompressed, 0x04 || X || Y (SEC 1 §2.3.3), base64url without padding",
+      "point_bytes": 65,
+      "shared_secret": "the 32-byte X coordinate",
+      "kdf": "HKDF-SHA256",
+      "salt": "",
+      "info": "\"asgard/1 session\" || 0x00 || client_public || server_public (the 65 raw bytes of each)",
+      "info_label": "asgard/1 session",
+      "secret_bytes": 32,
+      "ephemeral": { "value": true, "level": "MUST", "note": "Each side makes a key pair for one handshake and discards the private key once the secret is derived." }
+    },
+    "keys": {
+      "section": "§7.2",
+      "kdf": "HKDF-SHA256",
+      "ikm": "the session secret",
+      "salt": "",
+      "list": [
+        { "name": "sig_c", "info": "asgard/1 sig client", "bytes": 32, "used_for": "HMAC signing of requests" },
+        { "name": "sig_s", "info": "asgard/1 sig server", "bytes": 32, "used_for": "HMAC signing of responses and events" },
+        { "name": "enc_c", "info": "asgard/1 enc client", "bytes": 16, "used_for": "aes128gcm IKM for request bodies" },
+        { "name": "enc_s", "info": "asgard/1 enc server", "bytes": 16, "used_for": "aes128gcm IKM for response bodies and event bodies" }
+      ]
+    },
+    "content_encoding": {
+      "section": "§7.4",
+      "standard": "RFC 8188",
+      "name": "aes128gcm",
+      "record_size": { "value": 4096, "level": "MUST" },
+      "salt_bytes": { "value": 16, "level": "MUST", "note": "Fresh and random for every message and every event." },
+      "keyid": "the session id; a receiver MUST refuse any other",
+      "last_record_delimiter": "0x02",
+      "other_record_delimiter": "0x01",
+      "requests_compressed": false
+    },
+    "nonce": {
+      "section": "§7.3",
+      "random_bytes": { "value": 16, "level": "MUST" },
+      "pattern": "^[A-Za-z0-9_-]{16,64}$",
+      "min_length": 16,
+      "max_length": 64,
+      "remembered": "per session, until its expires plus the clock skew allowance"
+    },
+    "gzip": {
+      "section": "§7.4",
+      "standard": "RFC 1952",
+      "level": { "value": 6, "level": "MUST" },
+      "header_hex": "1f8b08000000000000ff",
+      "header_note": "Fixed header: no file name, mtime 0, OS 255. The header and level are fixed so answers are comparable, not byte-identical: deflate builds differ, so a receiver checks a compressed body by inflating it, never by comparing bytes.",
+      "min_plaintext_bytes": { "value": 1024, "note": "Below this a region answer or event is not compressed." },
+      "inflate_cap_bytes": { "value": 8388608, "level": "MUST", "note": "8 MiB. A client gives up as soon as inflated output passes it." },
+      "compressible": ["region answers (render, batch, screen, action) with delta {} where every region allows it", "fragment and patch events"],
+      "never_compressed": ["requests", "method call answers", "upload answers", "errors", "signal events"]
+    }
+  },
+
+  "timing": {
+    "clock_skew_future_seconds": { "value": 60, "level": "MAY", "section": "§7.3", "note": "A request's created may be up to this far in the future." },
+    "request_lifetime_max_seconds": { "value": 300, "level": "MUST", "section": "§7.3", "note": "expires is at most this long after created. A request past its expires MUST be refused." },
+    "response_created_ahead_max_seconds": { "value": 60, "level": "MUST", "section": "§7.3", "note": "A client refuses a response whose created is further ahead of its clock." },
+    "response_created_behind_max_seconds": { "value": 300, "level": "MUST", "section": "§7.3", "note": "A client refuses a response whose created is further behind its clock." },
+    "session_early_expiry_seconds": { "value": 60, "level": "SHOULD", "section": "§6.2", "note": "A client treats a session as gone this long before expires_in says it lapses." },
+    "region_timeout_seconds": { "value": 15, "level": "RECOMMENDED", "section": "§3.1", "note": "0 means no limit (MAY, set per component)." },
+    "action_timeout_seconds": { "value": 15, "level": "RECOMMENDED", "section": "§10.2", "note": "Also applies to chrome actions and method calls. 0 means no limit." },
+    "screen_timeout_seconds": { "value": 15, "level": "RECOMMENDED", "section": "§12.1", "note": "How long a server screen waits for its first body." },
+    "upload_timeout_seconds": { "value": 120, "level": "RECOMMENDED", "section": "§10.6" },
+    "stream_ping_seconds": { "value": 5, "level": "MUST", "section": "§8.1", "note": "A `: ping` comment this often." },
+    "stream_backoff_max_seconds": { "value": 30, "level": "MUST", "section": "§8.1", "note": "Reconnect backoff: the server's retry, doubled per failure in a row, at most this." },
+    "stream_lifetime_seconds": { "value": 300, "level": "default", "section": "§8.1", "note": "How long a server keeps a stream open. A sensible default; unrelated to the signature window." },
+    "route_retry_seconds": { "value": 60, "level": "MAY", "section": "§12.3", "note": "A failed route list fetch may be retried a minute later." },
+    "cache_fresh_skew_seconds": { "value": -60, "level": "MUST", "section": "§8.3", "note": "A declared copy is fresh when the time since made_at by the server's clock is at least this." },
+    "cache_renew_margin_seconds": { "value": 30, "level": "default", "section": "§8.3", "note": "A server SHOULD render a copy with little time left; 30 seconds is a sensible default." },
+    "patch_record_wait_ms": { "value": 250, "level": "default", "section": "§8.2", "note": "What the reference server waits for the record of the newest patch step (MAY), and at least one poll." },
+    "patch_record_wait_polls": { "value": 1, "level": "default", "section": "§8.2" }
+  },
+
+  "limits": {
+    "address": { "pattern": "^[a-z][a-z0-9_-]*(\\.[a-z][a-z0-9_-]*)*$", "section": "§4", "note": "No maximum length is given." },
+    "elements": { "max_items": 256, "item_max_length": 64, "item_pattern": "^[a-z][a-z0-9_]*$", "distinct": true, "section": "§6.1" },
+    "region_name": { "pattern": "^[A-Za-z0-9_.:-]{1,100}$", "min_length": 1, "max_length": 100, "section": "§3", "note": "A name that does not match is 422 invalid_request; a well-formed name the component does not have is 404 unknown_component." },
+    "regions_per_request": { "value": null, "level": "SHOULD", "reference": 16, "section": "§3.1", "note": "A server SHOULD set its own limit and answer a request over it with 422 too_many_regions. The same limit applies to a call's or upload's regions and to each stream subscription. The reference implementations allow 16." },
+    "regions": { "min_items": 1, "distinct": true, "section": "§3.1" },
+    "action_regions": { "value": 1, "section": "§10.2", "note": "A request with an action names exactly one region." },
+    "redraw_inline_regions": { "max": 16, "section": "§10.2" },
+    "redraw_hints": { "max": 16, "section": "§10.2" },
+    "redraw_parts": { "max": 17, "section": "§10.2", "note": "16 inline regions plus the action's own." },
+    "fragment_depth": { "max": 64, "section": "§9.1", "note": "The root is at depth 1." },
+    "call": { "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,99}$", "section": "§10.1" },
+    "args": { "max_items": 16, "max_nesting": 4, "section": "§10.1" },
+    "media_url_bytes": { "max": 2048, "section": "§9.6" },
+    "navigate_bytes": { "max": 2048, "section": "§12.4" },
+    "version_token": { "pattern": "^[A-Za-z0-9_-]{1,64}$", "max_length": 64, "section": "§8.1" },
+    "subscriptions": { "min_items": 1, "max_items": 16, "section": "§8.1" },
+    "subscription_id": { "pattern": "^[A-Za-z0-9_-]{1,32}$", "min_length": 1, "max_length": 32, "section": "§8.1", "note": "Unique within a request." },
+    "subscription_regions": { "min_items": 1, "max_items": null, "distinct": true, "section": "§8.1", "note": "No fixed maximum: each subscription is held to the server's limit on regions per request (§3.1), with 422 too_many_regions." },
+    "cache_entries": { "max": 64, "section": "§8.3" },
+    "cache_made_at": { "minimum": 1, "unit": "milliseconds since the Unix epoch", "section": "§8.3" },
+    "cache_ttl_seconds": { "minimum": 0, "maximum": 31536000, "section": "§8.3" },
+    "max_age_seconds": { "minimum": 0, "section": "§8.3" },
+    "asgard_cache_value": { "pattern": "^[a-z]{1,32}$", "section": "§8.3" },
+    "patch_nodes": { "min_items": 1, "max_items": 100, "section": "§8.2" },
+    "patch_keys": { "min_items": 1, "max_items": 1000, "section": "§8.2" },
+    "patch_keep": { "minimum": 1, "maximum": 100000, "section": "§8.2" },
+    "upload_header_bytes": { "max": 1048576, "section": "§10.6", "note": "1 MiB. The frame's uint32 length prefix is big-endian." },
+    "upload_client_cap": { "value": "20 MiB", "bytes": 20971520, "level": "RECOMMENDED", "section": "§10.6" },
+    "chrome_id": { "pattern": "^[A-Za-z0-9_.:-]{1,100}$", "section": "§12.2" },
+    "chrome_string_bytes": { "max": 1024, "section": "§12.2" },
+    "nav_bar_actions": { "max": 16, "section": "§12.2" },
+    "nav_bar_action_items": { "max": 32, "depth": 1, "section": "§12.2" },
+    "nav_bar_elevation": { "minimum": 0, "maximum": 64, "section": "§12.2" },
+    "nav_bar_logo_height": { "maximum": 200, "default": 28, "section": "§12.2" },
+    "search_debounce_ms": { "minimum": 0, "maximum": 5000, "section": "§12.2" },
+    "tabs": { "max": 10, "section": "§12.2" },
+    "route_segment": { "pattern": "^[A-Za-z0-9._~-]+$", "section": "§12.3", "note": "Literal segments; parameters are {name}, with an optional {name?} allowed last." },
+    "font_weight": { "minimum": 1, "maximum": 7, "section": "§9.7", "note": "A client clamps other values into the range." }
+  },
+
+  "state": {
+    "section": "§5",
+    "canonical": { "standard": "RFC 8785", "name": "JSON Canonicalization Scheme", "section": "§5.1", "note": "The canonical state is the state object serialized with RFC 8785. Two states are the same when their canonical states are the same bytes. Used to group and id stream subscriptions, match events and patches to instances, key shared renders, and match cached copies to a request. Integers above 2^53 SHOULD be sent as strings." },
+    "delta_required_on": ["render", "call", "upload"],
+    "delta_empty": {},
+    "read_only": { "section": "§5.4", "note": "A list of distinct strings, each a member of state. Any other shape is 422 invalid_request." },
+    "compare_and_set": { "level": "MUST", "section": "§5.4", "note": "The client applies each delta member only if it still holds the value it sent." },
+    "route_value_booleans": { "value": { "true": true, "false": false, "1": true, "0": false }, "section": "§12.1", "note": "A server converts a numeric string to a number and these strings to booleans, and nothing else." }
+  },
+
+  "reasons": {
+    "value": ["push"],
+    "section": "§8.3",
+    "note": "The only value of `reason`, on a render request sent because of a push. Any other value is 422 invalid_request; a call or upload MUST NOT carry it."
+  },
+
+  "events": {
+    "section": "§8.1, §8.2",
+    "content_type": "text/event-stream",
+    "names": ["signal", "fragment", "patch"],
+    "envelope": { "members": ["body", "enc", "sig"], "order": "SHOULD be this order" },
+    "enc": ["gzip", "identity"],
+    "comment_ping": ": ping",
+    "messages": {
+      "signal": { "required": ["protocol", "subscription", "region", "version"], "compressed": false },
+      "fragment": { "required": ["protocol", "subscription", "region", "version", "made_at", "fragment"], "optional": ["max_age", "chrome"], "only_for": "shared regions" },
+      "patch": { "required": ["protocol", "subscription", "region", "from", "version", "patch"] }
+    }
+  },
+
+  "patch": {
+    "section": "§8.2",
+    "ops": ["prepend", "append", "remove"],
+    "members": {
+      "prepend": { "required": ["op", "target", "nodes"], "optional": ["keep"] },
+      "append": { "required": ["op", "target", "nodes"], "optional": ["keep"] },
+      "remove": { "required": ["op", "target", "keys"] }
+    },
+    "max_tree_depth": 64
+  },
+
+  "elements": {
+    "section": "§9.7",
+    "core": ["column", "row", "stack", "scroll_view", "text", "button", "image", "spacer", "divider"],
+    "well_known": ["list_item"],
+    "reserved": {
+      "section": "§9.3",
+      "chrome": ["top_bar", "top_bar_action", "top_bar_title", "bottom_nav", "bottom_nav_item", "bottom_bar", "side_nav", "side_nav_item", "side_nav_group", "side_nav_header", "native_drawer", "fab"],
+      "region": ["server_region"]
+    },
+    "type_pattern": "^[a-z][a-z0-9_]*$",
+    "node_members": ["type", "key", "class", "props", "on_press", "on_long_press", "on_double_tap", "on_change", "on_submit", "children"],
+    "common_props": ["a11yLabel", "a11yHint"],
+    "reserved_prop_prefixes": ["_", "native-", "native:"],
+    "media_props": ["src", "leadingAvatar", "leadingImage"],
+    "media_schemes": ["https"],
+    "media_development_schemes": ["http"],
+    "media_no_image": [null, ""],
+    "class_variants": ["dark:", "ios:", "android:"],
+    "color_formats": ["#RRGGBB", "#AARRGGBB"],
+    "props": {
+      "scroll_view": { "axis": ["vertical", "horizontal", "both"], "showsIndicators": "boolean" },
+      "text": { "text": "string", "color": "color", "fontSize": "size", "fontWeight": "integer 1-7", "textAlign": ["left", "center", "right"], "maxLines": "integer" },
+      "button": { "label": "string", "disabled": "boolean", "labelColor": "color", "fontSize": "size" },
+      "image": { "src": "media URL", "fit": ["contain", "cover", "fill", "none"], "tintColor": "color", "alt": "string" },
+      "list_item": { "headline": "string", "supporting": "string", "overline": "string", "leadingAvatar": "media URL", "leadingImage": "media URL", "leadingMonogram": "string", "trailingText": "string", "disabled": "boolean" }
+    },
+    "webview": { "section": "§9.3", "type": "webview", "core": false, "local_allowed": [false, null] }
+  },
+
+  "slots": {
+    "section": "§10.1, §12.4",
+    "names": ["on_press", "on_long_press", "on_double_tap", "on_change", "on_submit"],
+    "press": ["on_press", "on_long_press", "on_double_tap"],
+    "value": ["on_change", "on_submit"],
+    "kinds": {
+      "call": { "members": ["call", "args", "target"], "required": ["call"], "server_always_sends": ["args"], "slots": "any" },
+      "navigate": { "members": ["navigate", "replace", "transition"], "required": ["navigate"], "slots": "press only" },
+      "back": { "members": ["back", "transition"], "required": ["back"], "back_value": true, "slots": "press only" }
+    },
+    "targets": ["server", "client"],
+    "default_target": "server",
+    "transitions": ["slide_from_right", "slide_from_left", "slide_from_bottom", "fade", "fade_from_bottom", "scale_from_center", "parallax_push", "morph", "none"],
+    "unknown_members": "refused"
+  },
+
+  "unknown_members_refused_in": {
+    "section": "§5.3",
+    "value": ["callback slot", "navigation", "method call body", "upload header"],
+    "note": "Everywhere else a receiver ignores a member it does not know."
+  },
+
+  "screens": {
+    "section": "§12",
+    "body_region": "screen",
+    "chrome_members": ["native", "font", "nav_bar", "tab_bar", "bottom_bar", "tab_accessory"],
+    "nav_bar_members": ["title", "subtitle", "back", "hidden", "background_color", "text_color", "font", "elevation", "display_mode", "scroll_behavior", "logo", "title_view", "search", "actions"],
+    "nav_bar_display_mode": ["large", "inline", "automatic"],
+    "nav_bar_scroll_behavior": ["collapse", "pinned", "enterAlways"],
+    "nav_action_members": ["id", "label", "a11y_label", "icon", "ios_icon", "android_icon", "image", "destructive", "disabled", "on_press", "items"],
+    "search_members": ["placeholder", "debounce_ms", "on_query"],
+    "tab_bar_members": ["hidden", "active_color", "background_color", "text_color", "font", "label_visibility", "dark", "minimize_on_scroll", "highlight", "presentation", "tabs"],
+    "tab_bar_label_visibility": ["labeled", "selected", "unlabeled"],
+    "tab_members": ["id", "label", "url", "icon", "ios_icon", "android_icon", "badge", "badge_color", "news", "active", "search", "on_press"],
+    "presentation_members": ["id", "configuration"],
+    "root_route": "/",
+    "on_give_up_route": "/"
+  },
+
+  "bodies": {
+    "section": "§3.1, §5.4, §6.1, §8.1, §8.3, §10.2, §10.5, §10.6, §12.3",
+    "handshake_request": { "required": ["key", "protocol", "accepts", "client_public"], "optional": ["elements"] },
+    "handshake_answer": { "required": ["session", "server_public", "expires_in", "encoding"] },
+    "render_request": { "required": ["protocol", "component", "regions", "state"], "optional": ["read_only", "cache", "reason", "action"] },
+    "render_answer": { "required": ["protocol", "delta", "fragments"], "optional": ["refresh"] },
+    "part": { "required": ["fragment", "made_at"], "optional": ["version", "max_age", "chrome"] },
+    "cached_part": { "value": { "cached": true } },
+    "refresh_hint": { "required": ["component"], "optional": ["region"] },
+    "call_request": { "required": ["protocol", "component", "method", "args", "state"], "optional": ["read_only", "regions", "cache"], "unknown_members": "refused" },
+    "call_answer": { "required": ["protocol", "delta"], "optional": ["fragments", "refresh"] },
+    "upload_header": { "required": ["protocol", "component", "method", "args", "state", "filename", "mime", "size"], "optional": ["read_only", "regions", "cache"], "unknown_members": "refused" },
+    "stream_request": { "required": ["protocol", "subscriptions"], "refused": ["action"] },
+    "subscription": { "required": ["id", "component", "regions", "state"], "optional": ["versions", "read_only"], "refused": ["action"] },
+    "cache_entry": { "required": ["made_at", "ttl"], "exact": true },
+    "routes_request": { "required": ["protocol"] },
+    "routes_answer": { "required": ["protocol", "version", "routes"] },
+    "route": { "required": ["uri", "screen"] }
+  }
+}

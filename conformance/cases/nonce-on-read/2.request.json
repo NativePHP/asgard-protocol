@@ -1,0 +1,9 @@
+{
+  "endpoint": "routes",
+  "body": {
+    "protocol": 1
+  },
+  "seal": {
+    "nonce": true
+  }
+}

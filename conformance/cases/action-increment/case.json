@@ -1,0 +1,7 @@
+{
+  "description": "An action runs, its change comes back in delta, and its region shows it.",
+  "sections": [
+    "§5.4",
+    "§10.2"
+  ]
+}

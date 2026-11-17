@@ -1,0 +1,8 @@
+{
+  "description": "A request after the handshake with no Asgard-Protocol header is the unsigned early rejection 422 unsupported_protocol.",
+  "sections": [
+    "§6.2",
+    "§7.3",
+    "§7.6"
+  ]
+}

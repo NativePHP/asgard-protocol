@@ -1,0 +1,8 @@
+{
+  "status": 419,
+  "sealed": false,
+  "body": {
+    "$partial": true,
+    "error": "session_expired"
+  }
+}

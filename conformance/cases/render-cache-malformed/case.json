@@ -1,0 +1,6 @@
+{
+  "description": "A cache entry without ttl is 422 invalid_request.",
+  "sections": [
+    "§8.3"
+  ]
+}

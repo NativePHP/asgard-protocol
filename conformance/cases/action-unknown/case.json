@@ -1,0 +1,6 @@
+{
+  "description": "A call that is not an exposed method is 404 unknown_action.",
+  "sections": [
+    "§10.2"
+  ]
+}

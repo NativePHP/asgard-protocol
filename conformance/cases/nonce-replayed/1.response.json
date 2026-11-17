@@ -1,0 +1,11 @@
+{
+  "status": 200,
+  "sealed": true,
+  "body": {
+    "$partial": true,
+    "protocol": 1,
+    "delta": {
+      "count": 2
+    }
+  }
+}

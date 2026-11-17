@@ -1,0 +1,17 @@
+{
+  "endpoint": "call",
+  "body": {
+    "protocol": 1,
+    "component": "conformance.counter",
+    "method": "increment",
+    "args": [
+      1
+    ],
+    "state": {
+      "count": 1
+    }
+  },
+  "seal": {
+    "nonce": "reuse"
+  }
+}

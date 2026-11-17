@@ -1,0 +1,30 @@
+{
+  "status": 200,
+  "sealed": true,
+  "body": {
+    "$partial": true,
+    "protocol": 1,
+    "delta": {},
+    "fragments": {
+      "count": {
+        "$anyOf": [
+          {
+            "cached": true
+          },
+          {
+            "version": "{{version?}}",
+            "made_at": "{{made_at}}",
+            "max_age": "{{int?}}",
+            "fragment": {
+              "type": "text",
+              "key": "count",
+              "props": {
+                "text": "Count: 6"
+              }
+            }
+          }
+        ]
+      }
+    }
+  }
+}

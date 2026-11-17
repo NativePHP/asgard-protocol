@@ -1,0 +1,8 @@
+{
+  "status": 405,
+  "sealed": false,
+  "body": {
+    "$partial": true,
+    "error": "method_not_allowed"
+  }
+}

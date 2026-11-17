@@ -1,0 +1,16 @@
+{
+  "status": 200,
+  "exact": true,
+  "events": [
+    {
+      "event": "signal",
+      "data": {
+        "$partial": true,
+        "protocol": 1,
+        "subscription": "s1",
+        "region": "count",
+        "version": "{{!=v}}"
+      }
+    }
+  ]
+}

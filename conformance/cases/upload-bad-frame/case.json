@@ -1,0 +1,6 @@
+{
+  "description": "A frame whose header length runs past the body is 422 invalid_request.",
+  "sections": [
+    "§10.6"
+  ]
+}

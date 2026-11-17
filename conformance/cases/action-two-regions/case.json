@@ -1,0 +1,6 @@
+{
+  "description": "An action must name exactly one region; two is 422 invalid_request.",
+  "sections": [
+    "§10.2"
+  ]
+}

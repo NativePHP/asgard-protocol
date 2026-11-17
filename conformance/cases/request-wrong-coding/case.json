@@ -1,0 +1,8 @@
+{
+  "description": "A request whose Content-Encoding is not aes128gcm, even when signed, is the unsigned early rejection 415 unsupported_coding.",
+  "sections": [
+    "§7.3",
+    "§7.4",
+    "§7.6"
+  ]
+}

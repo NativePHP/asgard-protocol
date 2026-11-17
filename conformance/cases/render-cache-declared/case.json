@@ -1,0 +1,6 @@
+{
+  "description": "A declared fresh copy may come back as {\"cached\":true}, and otherwise renders as usual.",
+  "sections": [
+    "§8.3"
+  ]
+}

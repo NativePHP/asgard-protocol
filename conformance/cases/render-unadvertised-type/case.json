@@ -1,0 +1,8 @@
+{
+  "description": "A fragment using a type the session did not advertise is never sent: 500 invalid_fragment.",
+  "sections": [
+    "§6.1",
+    "§8.1",
+    "§9.3"
+  ]
+}

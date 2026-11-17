@@ -1,0 +1,18 @@
+{
+  "endpoint": "session",
+  "body": {
+    "key": "{{key}}",
+    "protocols": [
+      1
+    ],
+    "accepts": [
+      "tree/json"
+    ],
+    "client_public": "{{client_public}}",
+    "elements": [
+      "top_bar",
+      "list_item"
+    ]
+  },
+  "use": true
+}

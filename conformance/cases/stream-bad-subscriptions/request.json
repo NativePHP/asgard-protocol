@@ -1,0 +1,16 @@
+{
+  "endpoint": "stream",
+  "body": {
+    "protocol": 1,
+    "subscriptions": [
+      {
+        "id": "not a valid id!",
+        "component": "conformance.counter",
+        "regions": [
+          "count"
+        ],
+        "state": {}
+      }
+    ]
+  }
+}
