@@ -1,0 +1,7 @@
+{
+  "description": "A handshake with the conformance key succeeds, and the derived keys work for a render.",
+  "sections": [
+    "§6.1",
+    "§7.2"
+  ]
+}

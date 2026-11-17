@@ -1,0 +1,6 @@
+{
+  "description": "A `protocols` that is not a list of 1 to 16 distinct positive integers is 422 invalid_request.",
+  "sections": [
+    "§6.1"
+  ]
+}

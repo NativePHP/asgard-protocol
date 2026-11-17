@@ -1,0 +1,12 @@
+{
+  "status": 422,
+  "sealed": false,
+  "body": {
+    "$partial": true,
+    "error": "unsupported_protocol",
+    "protocols": [
+      "{{contains}}",
+      1
+    ]
+  }
+}

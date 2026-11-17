@@ -1,0 +1,304 @@
+{
+  "status": 200,
+  "sealed": true,
+  "body": {
+    "$partial": true,
+    "protocol": 1,
+    "delta": {},
+    "fragments": {
+      "big": {
+        "version": "{{version?}}",
+        "made_at": "{{made_at}}",
+        "max_age": "{{int?}}",
+        "fragment": {
+          "type": "column",
+          "children": [
+            {
+              "type": "text",
+              "key": 1,
+              "props": {
+                "text": "Row 1 of the conformance list"
+              }
+            },
+            {
+              "type": "text",
+              "key": 2,
+              "props": {
+                "text": "Row 2 of the conformance list"
+              }
+            },
+            {
+              "type": "text",
+              "key": 3,
+              "props": {
+                "text": "Row 3 of the conformance list"
+              }
+            },
+            {
+              "type": "text",
+              "key": 4,
+              "props": {
+                "text": "Row 4 of the conformance list"
+              }
+            },
+            {
+              "type": "text",
+              "key": 5,
+              "props": {
+                "text": "Row 5 of the conformance list"
+              }
+            },
+            {
+              "type": "text",
+              "key": 6,
+              "props": {
+                "text": "Row 6 of the conformance list"
+              }
+            },
+            {
+              "type": "text",
+              "key": 7,
+              "props": {
+                "text": "Row 7 of the conformance list"
+              }
+            },
+            {
+              "type": "text",
+              "key": 8,
+              "props": {
+                "text": "Row 8 of the conformance list"
+              }
+            },
+            {
+              "type": "text",
+              "key": 9,
+              "props": {
+                "text": "Row 9 of the conformance list"
+              }
+            },
+            {
+              "type": "text",
+              "key": 10,
+              "props": {
+                "text": "Row 10 of the conformance list"
+              }
+            },
+            {
+              "type": "text",
+              "key": 11,
+              "props": {
+                "text": "Row 11 of the conformance list"
+              }
+            },
+            {
+              "type": "text",
+              "key": 12,
+              "props": {
+                "text": "Row 12 of the conformance list"
+              }
+            },
+            {
+              "type": "text",
+              "key": 13,
+              "props": {
+                "text": "Row 13 of the conformance list"
+              }
+            },
+            {
+              "type": "text",
+              "key": 14,
+              "props": {
+                "text": "Row 14 of the conformance list"
+              }
+            },
+            {
+              "type": "text",
+              "key": 15,
+              "props": {
+                "text": "Row 15 of the conformance list"
+              }
+            },
+            {
+              "type": "text",
+              "key": 16,
+              "props": {
+                "text": "Row 16 of the conformance list"
+              }
+            },
+            {
+              "type": "text",
+              "key": 17,
+              "props": {
+                "text": "Row 17 of the conformance list"
+              }
+            },
+            {
+              "type": "text",
+              "key": 18,
+              "props": {
+                "text": "Row 18 of the conformance list"
+              }
+            },
+            {
+              "type": "text",
+              "key": 19,
+              "props": {
+                "text": "Row 19 of the conformance list"
+              }
+            },
+            {
+              "type": "text",
+              "key": 20,
+              "props": {
+                "text": "Row 20 of the conformance list"
+              }
+            },
+            {
+              "type": "text",
+              "key": 21,
+              "props": {
+                "text": "Row 21 of the conformance list"
+              }
+            },
+            {
+              "type": "text",
+              "key": 22,
+              "props": {
+                "text": "Row 22 of the conformance list"
+              }
+            },
+            {
+              "type": "text",
+              "key": 23,
+              "props": {
+                "text": "Row 23 of the conformance list"
+              }
+            },
+            {
+              "type": "text",
+              "key": 24,
+              "props": {
+                "text": "Row 24 of the conformance list"
+              }
+            },
+            {
+              "type": "text",
+              "key": 25,
+              "props": {
+                "text": "Row 25 of the conformance list"
+              }
+            },
+            {
+              "type": "text",
+              "key": 26,
+              "props": {
+                "text": "Row 26 of the conformance list"
+              }
+            },
+            {
+              "type": "text",
+              "key": 27,
+              "props": {
+                "text": "Row 27 of the conformance list"
+              }
+            },
+            {
+              "type": "text",
+              "key": 28,
+              "props": {
+                "text": "Row 28 of the conformance list"
+              }
+            },
+            {
+              "type": "text",
+              "key": 29,
+              "props": {
+                "text": "Row 29 of the conformance list"
+              }
+            },
+            {
+              "type": "text",
+              "key": 30,
+              "props": {
+                "text": "Row 30 of the conformance list"
+              }
+            },
+            {
+              "type": "text",
+              "key": 31,
+              "props": {
+                "text": "Row 31 of the conformance list"
+              }
+            },
+            {
+              "type": "text",
+              "key": 32,
+              "props": {
+                "text": "Row 32 of the conformance list"
+              }
+            },
+            {
+              "type": "text",
+              "key": 33,
+              "props": {
+                "text": "Row 33 of the conformance list"
+              }
+            },
+            {
+              "type": "text",
+              "key": 34,
+              "props": {
+                "text": "Row 34 of the conformance list"
+              }
+            },
+            {
+              "type": "text",
+              "key": 35,
+              "props": {
+                "text": "Row 35 of the conformance list"
+              }
+            },
+            {
+              "type": "text",
+              "key": 36,
+              "props": {
+                "text": "Row 36 of the conformance list"
+              }
+            },
+            {
+              "type": "text",
+              "key": 37,
+              "props": {
+                "text": "Row 37 of the conformance list"
+              }
+            },
+            {
+              "type": "text",
+              "key": 38,
+              "props": {
+                "text": "Row 38 of the conformance list"
+              }
+            },
+            {
+              "type": "text",
+              "key": 39,
+              "props": {
+                "text": "Row 39 of the conformance list"
+              }
+            },
+            {
+              "type": "text",
+              "key": 40,
+              "props": {
+                "text": "Row 40 of the conformance list"
+              }
+            }
+          ]
+        }
+      }
+    }
+  },
+  "headers": {
+    "asgard-content-coding": "{{oneOf:gzip|identity}}"
+  }
+}

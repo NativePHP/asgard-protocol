@@ -1,0 +1,6 @@
+{
+  "description": "regions must be distinct names; a repeat is a 422.",
+  "sections": [
+    "§3.1"
+  ]
+}

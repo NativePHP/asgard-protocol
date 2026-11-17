@@ -59,10 +59,10 @@ depends on which.
 | 404 | Not Found | [RFC 9110 §15.5.5](https://www.rfc-editor.org/rfc/rfc9110#section-15.5.5) | An unknown address, region or method ([§4](#4-addressing-components), [§10.5](#105-method-calls)) |
 | 405 | Method Not Allowed | [RFC 9110 §15.5.6](https://www.rfc-editor.org/rfc/rfc9110#section-15.5.6) | A method the endpoint does not accept ([§8](#8-transport)) |
 | 413 | Content Too Large | [RFC 9110 §15.5.14](https://www.rfc-editor.org/rfc/rfc9110#section-15.5.14) | An upload over its size limit ([§10.6](#106-uploads)) |
-| 415 | Unsupported Media Type | [RFC 9110 §15.5.16](https://www.rfc-editor.org/rfc/rfc9110#section-15.5.16) | An upload of a type the method does not accept ([§10.6](#106-uploads)) |
+| 415 | Unsupported Media Type | [RFC 9110 §15.5.16](https://www.rfc-editor.org/rfc/rfc9110#section-15.5.16) | An upload of a type the method does not accept ([§10.6](#106-uploads)), or a request content coding other than `aes128gcm` ([§7.4](#74-encryption)) |
 | 419 | (not registered) | This document | The session is missing, unknown or expired ([§6.3](#63-loss)) |
-| 422 | Unprocessable Content | [RFC 9110 §15.5.21](https://www.rfc-editor.org/rfc/rfc9110#section-15.5.21) | A body that is well formed but wrong |
-| 500 | Internal Server Error | [RFC 9110 §15.6.1](https://www.rfc-editor.org/rfc/rfc9110#section-15.6.1) | A fragment or delta the server could not produce |
+| 422 | Unprocessable Content | [RFC 9110 §15.5.21](https://www.rfc-editor.org/rfc/rfc9110#section-15.5.21) | A body that is well formed but wrong, or a protocol version the server does not speak ([§6.1](#61-handshake), [§6.2](#62-use-and-renewal)) |
+| 500 | Internal Server Error | [RFC 9110 §15.6.1](https://www.rfc-editor.org/rfc/rfc9110#section-15.6.1) | A fragment, delta or redraw the server could not produce |
 | 501 | Not Implemented | [RFC 9110 §15.6.2](https://www.rfc-editor.org/rfc/rfc9110#section-15.6.2) | Sent by something in front of the server that refuses QUERY ([§8](#8-transport)) |
 
 419 is not a registered HTTP status code. Asgard borrows it from common web
@@ -75,7 +75,8 @@ move to a registered code before 1.0 is an open question
 ([RFC 9110 §8.3](https://www.rfc-editor.org/rfc/rfc9110#section-8.3), [RFC 9110 §8.4](https://www.rfc-editor.org/rfc/rfc9110#section-8.4)) carry JSON ([RFC 8259](https://www.rfc-editor.org/rfc/rfc8259)), encrypted with
 `aes128gcm` ([RFC 8188](https://www.rfc-editor.org/rfc/rfc8188)) and optionally compressed with gzip ([RFC 1952](https://www.rfc-editor.org/rfc/rfc1952)).
 `Content-Digest` ([RFC 9530](https://www.rfc-editor.org/rfc/rfc9530)) and HTTP Message Signatures ([RFC 9421](https://www.rfc-editor.org/rfc/rfc9421)) sign
-messages ([§7.3](#73-signatures)). URIs follow [RFC 3986](https://www.rfc-editor.org/rfc/rfc3986). The push stream is
+messages ([§7.3](#73-signatures)). States are compared in their canonical form, the JSON
+Canonicalization Scheme ([RFC 8785](https://www.rfc-editor.org/rfc/rfc8785), [§5.1](#51-client-state)). URIs follow [RFC 3986](https://www.rfc-editor.org/rfc/rfc3986). The push stream is
 Server-Sent Events ([SSE](https://html.spec.whatwg.org/multipage/server-sent-events.html)).
 
 **TLS.** Every Asgard request goes to an `https:` URI ([RFC 9110 §4.2.2](https://www.rfc-editor.org/rfc/rfc9110#section-4.2.2)), so
@@ -147,7 +148,26 @@ later version may define a safe way to deliver code. This one does not.
 
 A client marks a region of one of its own screens as server-rendered and
 gives it a name. The name MUST be unique among the regions of the component
-that declares it.
+that declares it, and MUST match:
+
+```
+^[A-Za-z0-9_.:-]{1,100}$
+```
+
+That is 1 to 100 letters, digits, underscores, dots, colons and hyphens. A
+server screen's body region is named `screen` ([§12.1](#121-screens)).
+
+A request can name regions in several places: `regions` in a region request
+or a batch ([§3.1](#31-when-the-client-asks)), the action's own region ([§10.2](#102-server-actions-the-default)), `regions` in a method
+call or upload ([§10.5](#105-method-calls), [§10.6](#106-uploads)), and `regions` in a stream subscription
+([§8.1](#81-the-push-stream)). Wherever it does, the server MUST check every name before it
+renders anything or runs any method, and the same rules apply:
+
+- A name that does not match the pattern above makes the body malformed,
+  and the answer is `422 invalid_request`.
+- A well-formed name that is not a region of the component is
+  `404 unknown_component`, the same answer as for an unknown address
+  ([§4](#4-addressing-components)).
 
 What the client shows in the region before a fragment arrives is the
 **placeholder**: a skeleton, a spinner, or anything else the app draws. It is
@@ -191,7 +211,9 @@ address ([§4](#4-addressing-components)), the regions it wants in `regions`, an
 ```
 
 `regions` MUST be a list of at least one distinct name. It is a list even for
-one region, so there is one request shape and one answer shape.
+one region, so there is one request shape and one answer shape. A server
+MUST answer any other `regions` (absent, empty, not a list, or with a name
+repeated) with `422 invalid_request`.
 
 The protocol has no field for the platform, app version or anything else
 about the client. A client that wants the server to know such a thing sends
@@ -225,9 +247,9 @@ declare the copies of this component's regions the client holds, in `cache`,
 and say it was sent because of a push, in `reason`. A server may then answer
 a part with `{"cached":true}` instead of a fragment. Both are in [§8.3](#83-caching).
 
-The server MUST check every name before it renders anything, and MUST answer
-an unknown one with `404 unknown_component`. The counters for every region's
-token MUST be read once, before any of them renders.
+The server MUST check the address and every region name before it renders
+anything, as [§3](#3-regions) and [§4](#4-addressing-components) say. The counters for every region's token MUST be
+read once, before any of them renders.
 
 An answer to a request that a newer one superseded, or for a component that
 has gone, MUST be dropped.
@@ -282,7 +304,9 @@ how many regions one request may name. A request over its limit gets
 MAY send the same regions again, split across smaller requests. A request
 for one region that gets it fails with reason `server` ([§10.2](#102-server-actions-the-default)). The protocol
 does not fix the limit, or the order in which a server checks a request with
-more than one problem. The reference implementations allow 16.
+more than one problem. The reference implementations allow 16. The same
+limit applies to the `regions` of a method call or upload ([§10.5](#105-method-calls)) and of
+each subscription on the push stream ([§8.1](#81-the-push-stream)).
 
 The server MUST NOT compress the answer unless its `delta` is `{}` and every
 region in it allows compression ([§7.4](#74-encryption)). An answer that mixes a region with
@@ -387,6 +411,27 @@ State is plain JSON. A server that turns its values into richer types (dates,
 enumerations, records) MUST do so only through an explicit list of the target
 types it allows. A state payload MUST NOT be able to make a server construct a
 type or run code the server did not choose.
+
+**Canonical state.** The canonical state is the state object serialized with
+the JSON Canonicalization Scheme ([RFC 8785](https://www.rfc-editor.org/rfc/rfc8785)): members sorted by name,
+no whitespace, and numbers and strings written one fixed way. Wherever this
+document compares two states, or groups or keys anything by state, it means
+the canonical state. Two states are the same when their canonical states are
+the same bytes. A client or server MUST NOT compare states any other way,
+such as by the bytes that were sent or by its language's own equality, since
+JSON libraries differ in member order, number formatting and string escapes.
+The canonical state is used for:
+
+- grouping instances into push stream subscriptions, and deriving their ids
+  ([§8.1](#81-the-push-stream));
+- matching an event or a patch to the instances it is for ([§8.1](#81-the-push-stream), [§8.2](#82-patches));
+- keying a shared region's render on the stream ([§8.1](#81-the-push-stream));
+- deciding whether a cached copy was made for the request's state ([§8.3](#83-caching)).
+
+RFC 8785 writes every number as an IEEE 754 double, so a state that must
+keep an integer above 2^53 exactly SHOULD hold it as a string. It also
+requires I-JSON, so a state with a string that is not valid Unicode, such as
+a lone surrogate, has no canonical state and SHOULD NOT be sent.
 
 ### 5.2 Server session state
 
@@ -526,25 +571,31 @@ ones. It never carries `X-Asgard-Method`:
 →  POST {base}/session
    Content-Type: application/json
    Authorization: Bearer <token>              (when the app has one)
-   { "key": "<asgard_key>", "protocol": 1, "accepts": ["tree/json"],
+   { "key": "<asgard_key>", "protocols": [1], "accepts": ["tree/json"],
      "elements": ["list_item", "toggle"],
      "client_public": "<base64url P-256 point>" }
 
 ←  200
    Content-Type: application/json
    { "session": "<opaque id>", "server_public": "<base64url P-256 point>",
-     "expires_in": 1800, "encoding": "tree/json" }
+     "protocol": 1, "expires_in": 1800, "encoding": "tree/json" }
 ```
 
+- `protocols` lists every protocol version the client speaks ([§11](#11-versioning)). It
+  MUST be an array of 1 to 16 distinct positive integers. The server picks
+  the highest version it also speaks and answers with it in `protocol`. The
+  session is made with that version, and everything after the handshake
+  uses it.
 - `client_public` and `server_public` MUST be uncompressed points,
   `0x04 || X || Y`, 65 bytes, as defined in [SEC 1 §2.3.3](https://www.secg.org/sec1-v2.pdf), in base64url
   without padding. A point that is malformed or not on the curve MUST be
-  refused with 422.
+  refused with `422 {"error":"invalid_request"}`.
 - `elements` lists the element types the client can render beyond the core
   set ([§9.7](#97-element-types)). It MUST be an array of distinct type names, each matching
   `^[a-z][a-z0-9_]*$` and at most 64 characters long, with at most 256
   entries. It MAY be empty or absent, which means core types only. A server
-  MUST refuse an `elements` that breaks these rules with 422. It MUST NOT
+  MUST refuse an `elements` that breaks these rules with
+  `422 {"error":"invalid_request"}`. It MUST NOT
   name a reserved type ([§9.3](#93-what-a-fragment-may-not-contain)), and a server MUST ignore one that does
   rather than refuse the handshake. The server keeps it with the
   session and MUST NOT send a fragment that uses a type outside the core
@@ -569,10 +620,16 @@ ones. It never carries `X-Asgard-Method`:
   stores the secret against the session id. The client stores it with the id
   and the expiry ([§6.2](#62-use-and-renewal)).
 - A key the server does not know is `403 {"error":"unknown_key"}`, and so is
-  any key while the server has none configured. A protocol the server does
-  not speak is `422 {"error":"unsupported_protocol","protocols":[1]}`. An
-  `accepts` with no encoding the server speaks is
-  `422 {"error":"unsupported_encoding"}`.
+  any key while the server has none configured. A `protocols` with no
+  version the server speaks is
+  `422 {"error":"unsupported_protocol","protocols":[1]}`, where `protocols`
+  lists the versions the server does speak. An `accepts` with no
+  encoding the server speaks is `422 {"error":"unsupported_encoding"}`. Any
+  other body the server cannot use (not a JSON object, or a member missing
+  or of the wrong type) is `422 {"error":"invalid_request"}`.
+- The handshake offers its versions in the body's `protocols`. It does not need
+  the `Asgard-Protocol` header that every later request carries ([§6.2](#62-use-and-renewal)),
+  and a server MUST ignore that header on `{base}/session`.
 
 The handshake itself is neither signed nor encrypted. There is nothing to
 sign it with yet, and nothing in it is secret. [§7.1](#71-threat-model) says what that does and
@@ -587,6 +644,17 @@ Every request after the handshake MUST carry `Asgard-Session-Id: <session>`:
 region requests, actions, method calls, uploads, the push stream and the
 route list. Each accepted request MUST slide the expiry forward on the server.
 The client slides its own copy when a response verifies.
+
+Every request after the handshake MUST also carry `Asgard-Protocol`: the
+protocol version the session was made with ([§6.1](#61-handshake)), as a decimal integer.
+For this version that is `Asgard-Protocol: 1`. Every sealed response carries
+it too. It is a covered component of both ([§7.3](#73-signatures)). A server MUST refuse a
+request whose `Asgard-Protocol` is missing, or is not a version it speaks,
+with the early rejection `422 {"error":"unsupported_protocol","protocols":[1]}`
+([§7.3](#73-signatures)), listing the versions it does speak as the handshake does. It
+checks this before anything else ([§7.6](#76-rejecting-early)). Once it has found the session,
+it MUST refuse a request whose `Asgard-Protocol` is not the version that
+session was made with, with the same rejection.
 
 A client keeps one session per base URL and `asgard_key`, where every part of
 the client that makes requests can use it. It need only store the 32-byte
@@ -605,6 +673,7 @@ and the user.
 |---|---|---|
 | Session unknown or expired | `419` | Re-handshake once, retry the request once. |
 | Digest, signature or decryption failed, signature expired, nonce reused or missing | `403` | **MUST NOT retry.** Surface an error. |
+| No version in common at the handshake, `Asgard-Protocol` missing, unsupported or not the session's, or a request content coding other than `aes128gcm` | `422`, `415` | **MUST NOT retry.** Surface an error. The client offered every version it speaks, so a second try cannot do better. |
 | Method the endpoint does not accept | `405` | On the first QUERY request after a handshake, fall back to POST as [§8](#8-transport) says. Otherwise **MUST NOT retry.** |
 | Bearer token rejected | `401` | Hand to the app's auth flow. |
 | Unknown component | `404` | Keep the placeholder, log. |
@@ -744,14 +813,18 @@ which the client MUST fill with 16 random bytes. The server MUST remember
 nonces per session until their `expires`, plus the clock skew allowance, and
 MUST refuse a repeat with 403. An action, method call or upload whose
 signature has no nonce MUST get `403 {"error":"nonce_required"}`. Region
-renders, stream requests and the route list are reads and MUST NOT carry a
-nonce.
+renders without an action, stream requests and the route list are reads and
+MUST NOT carry a nonce. A server MUST refuse a read whose signature carries
+one with `422 {"error":"invalid_request"}`.
 
 A call or an upload is known from its endpoint, so the server MUST refuse a
 missing nonce there before it decrypts, as an early rejection (below). An
 action is known only from its body, so on `{base}/render` the server can only
 find a missing nonce after it decrypts. That 403 is sealed like any other
-answer.
+answer. A nonce on a read is also found after decrypting, since a render is
+a read only when its body has no `action`, and its 422 is sealed too. The
+server checks a nonce that a read carries against the ones it has seen, as
+it does any other, before it decrypts ([§7.6](#76-rejecting-early)).
 
 **A response** covers:
 
@@ -773,8 +846,9 @@ response's ([RFC 9421 §2.4](https://www.rfc-editor.org/rfc/rfc9421#section-2.4)
 request it answers, and a fragment captured from one request cannot be
 replayed as the answer to another.
 
-Every answer to a request that passed the checks in [§7.6](#76-rejecting-early) MUST be sealed this
-way, whatever its status. A 404 or a 422 is signed and encrypted like a 200.
+Every answer to a request that passed the first seven checks in [§7.6](#76-rejecting-early) MUST
+be sealed this way, whatever its status. A 404 or a 422 `invalid_request` is
+signed and encrypted like a 200.
 
 **Early rejections** are the exception. They are plain, unsigned JSON, because
 there is either no session to sign with or no reason to trust the one
@@ -783,6 +857,8 @@ claimed. These are all of them:
 | Status | Body | When |
 |---|---|---|
 | 405 | `{"error":"method_not_allowed"}` | The request used a method the endpoint does not accept: on `{base}/session` anything but POST, and elsewhere anything but QUERY or a POST with `X-Asgard-Method: QUERY` ([§8](#8-transport)). |
+| 422 | `{"error":"unsupported_protocol","protocols":[1]}` | `Asgard-Protocol` is missing or is not a version the server speaks ([§6.2](#62-use-and-renewal)). `protocols` lists the ones it does. |
+| 415 | `{"error":"unsupported_coding"}` | `Content-Encoding` is missing or is not `aes128gcm` ([§7.4](#74-encryption)). |
 | 413 | `{"error":"too_large"}` | An upload the server can tell is too big from its size alone ([§10.6](#106-uploads)). |
 | 419 | `{"error":"session_expired"}` | `Asgard-Session-Id` is missing, unknown or expired ([§6.3](#63-loss)). |
 | 403 | `{"error":"forbidden"}` | A check in [§7.6](#76-rejecting-early) failed: the digest, the signature or its freshness, a reused nonce, or decryption. |
@@ -791,7 +867,7 @@ claimed. These are all of them:
 A body MAY also carry a `message` string for logs. A client MUST act on the
 status of an unsigned answer only: to fall back on a 405 to the first QUERY
 request after a handshake ([§8](#8-transport)), to re-handshake on 419, and to
-stop on 403 or 413. It MUST NOT read anything else from it, with one
+stop on 403, 413, 415 or 422. It MUST NOT read anything else from it, with one
 exception: while it probes the transport, it checks that the body is the one
 this table gives for that status ([§8](#8-transport)). An unsigned answer
 with any other status is a failure like a bad signature ([§6.3](#63-loss)).
@@ -840,11 +916,17 @@ the fragment format, so [§9](#9-fragment-format) is unchanged.
 
 **Compression.** Nothing between the server and the client can compress an
 encrypted body, so the server compresses fragments itself, before encrypting
-them. A 200-row list fragment of about 52 KB went over the wire as 2.4 KB.
+them. A 200-row list fragment of about 52,000 bytes went over the wire as about
+2,400.
 
 - Only responses and pushed events are compressed. Requests MUST NOT be
   compressed: they are small, and they carry client state. A server MUST
-  refuse a request with any coding other than `aes128gcm`.
+  refuse a request whose `Content-Encoding` is missing or is anything other
+  than `aes128gcm` with the early rejection
+  `415 {"error":"unsupported_coding"}` ([§7.3](#73-signatures)), the status
+  [RFC 9110 §15.5.16](https://www.rfc-editor.org/rfc/rfc9110#section-15.5.16) gives for a content coding the server does not accept.
+  The answer SHOULD carry `Accept-Encoding: aes128gcm`
+  ([RFC 9110 §12.5.3](https://www.rfc-editor.org/rfc/rfc9110#section-12.5.3)).
 - `Content-Encoding` MUST stay `aes128gcm`. Every sealed response MUST also
   carry `Asgard-Content-Coding`, which is `gzip` when the plaintext was
   gzipped before encryption and `identity` when it was not. The header is a
@@ -865,8 +947,12 @@ them. A 200-row list fragment of about 52 KB went over the wire as 2.4 KB.
   Errors MUST NOT be compressed: they are small and may echo what the client
   sent.
 - The gzip member ([RFC 1952](https://www.rfc-editor.org/rfc/rfc1952)) MUST have a fixed header (no file name, mtime
-  0, OS 255) and MUST be deflated at level 6, so the same input gives the same
-  bytes on any server.
+  0, OS 255) and MUST be deflated at level 6. The settings are fixed so that
+  answers from different servers are comparable, not so that they are the
+  same bytes: two deflate libraries, or two builds of one, can deflate the
+  same input at the same level to different bytes. A receiver checks a
+  compressed body by inflating it, and MUST NOT check it by comparing its
+  bytes with a compression of its own.
 - A client inflates in small steps and MUST give up as soon as the output
   passes **8 MiB** (8,388,608 bytes). Going over is a failure like a bad
   signature ([§6.3](#63-loss)). No real fragment comes near it, and it stops a small body
@@ -899,17 +985,34 @@ a valid signature and an invalid token MUST be rejected.
 
 ### 7.6 Rejecting early
 
-Order of checks, cheapest and most decisive first: session id known →
-`Content-Digest` matches the body → signature valid and fresh → nonce not seen
-before (actions, calls and uploads) → decrypt → bearer token → component
-resolvable → restore state. A request that fails any of the first five MUST be
-discarded before anything parses its body. On the server the first five MUST
-run ahead of the rest of the server's own request handling, so bearer auth
-only ever sees a request already known to be intact.
+Order of checks, cheapest and most decisive first:
 
-A client MUST check a response in the same order and MUST keep the placeholder
-on any failure. It MUST NOT render a fragment whose signature did not verify,
-and the same holds for pushed events ([§8.1](#81-the-push-stream)).
+1. `Asgard-Protocol` is a version the server speaks ([§6.2](#62-use-and-renewal)): else
+   `422 unsupported_protocol`.
+2. `Content-Encoding` is `aes128gcm` ([§7.4](#74-encryption)): else `415 unsupported_coding`.
+3. The session id is known: else `419 session_expired`. `Asgard-Protocol` is
+   the version the session was made with: else `422 unsupported_protocol`.
+4. `Content-Digest` matches the body: else `403 forbidden`.
+5. The signature is valid and fresh: else `403 forbidden`.
+6. A call or upload carries a nonce: else `403 nonce_required`. Any nonce
+   the signature carries has not been seen before: else `403 forbidden`.
+7. The body decrypts: else `403 forbidden`.
+8. The request has a nonce if it is an action and none if it is a read
+   ([§7.3](#73-signatures)): else a sealed `403 nonce_required` or `422 invalid_request`.
+9. The bearer token is valid ([§7.5](#75-authentication-is-separate)): else a sealed `401`.
+10. The component, and every region the request names, resolve ([§3](#3-regions), [§4](#4-addressing-components)).
+11. The state is restored.
+
+A request that fails any of the first seven MUST be discarded before
+anything parses its body, and gets the unsigned early rejection that
+[§7.3](#73-signatures) lists. On the server the first seven MUST run ahead of the rest of
+the server's own request handling, so bearer auth only ever sees a request
+already known to be intact.
+
+A client MUST check a response the same way, digest and signature before it
+decrypts anything, and MUST keep the placeholder on any failure. It MUST NOT
+render a fragment whose signature did not verify, and the same holds for
+pushed events ([§8.1](#81-the-push-stream)).
 
 ### 7.7 Floods
 
@@ -1030,7 +1133,8 @@ nothing else.
 By default the stream renders nothing. When a region changes it sends a
 **signal**: the region and its new version. The client fetches the region
 through a normal region request, with its own credentials. A region the
-server marks **shared** renders the same for everyone with the same state,
+server marks **shared** renders the same for everyone with the same state
+([§5.1](#51-client-state)),
 and for those the stream sends the fragment inline instead. Shared is
 opt-in, so a region left unmarked costs a round trip, never a leak.
 
@@ -1067,37 +1171,53 @@ lists every subscription the client wants:
 - `id` is the client's name for a subscription. It MUST be 1 to 32 characters of
   `A-Z a-z 0-9 _ -`, unique within the request. The server only echoes it.
 - `component`, `state` and each name in `regions` follow the rules of a
-  region request ([§4](#4-addressing-components), [§5](#5-state)). `regions` MUST hold 1 to 16 distinct names.
+  region request ([§3](#3-regions), [§4](#4-addressing-components), [§5](#5-state)). `regions` MUST hold at least one
+  distinct name, and is held to the server's limit on regions per request
+  ([§3.1](#31-when-the-client-asks)), applied to each subscription on its own.
 - `versions` is optional. It maps a region to the version token the client
   holds for it (below).
-- There MUST NOT be an `action`, at the top level or in a subscription.
-  Other members the server does not know are ignored ([§5.3](#53-compatibility)).
+- There MUST NOT be an `action`, at the top level or in a subscription. A
+  server answers one with `422 invalid_request`. Other members the server
+  does not know are ignored ([§5.3](#53-compatibility)).
 
 A subscription is one component instance's view of the server: one address
-and one state. Two instances with the same address and the same state share a
+and one state. Two instances with the same address and the same canonical
+state ([§5.1](#51-client-state)) share a
 subscription. Two with different state (`/promos/1` under `/promos/2`) are
 two subscriptions, and each gets the pushes rendered for its own state.
 
 The server MUST check every subscription before it streams anything, and a
 request it refuses gets the answer render would give, sealed the same way:
-a 422 for a bad body, a 404 `unknown_component` for an unknown address or
-region in any subscription, a 500 `invalid_fragment` for a fragment it cannot
-send. It works out which push channels each subscription watches from that
-subscription's state, and reads every counter of every subscription in one
-read per poll.
+
+- `422 invalid_request` for a malformed body, such as a bad subscription
+  count, a bad or repeated `id`, or a malformed region name;
+- `422 too_many_regions` for a subscription that names more regions than
+  the server's limit ([§3.1](#31-when-the-client-asks));
+- `404 unknown_component` for an unknown address or region in any
+  subscription ([§3](#3-regions), [§4](#4-addressing-components));
+- `500 invalid_fragment` for a fragment it cannot send.
+
+Nothing streams until the request is accepted whole. The server works out
+which push channels each subscription watches from that subscription's
+state, and reads every counter of every subscription in one read per poll.
+
+A client that gets `too_many_regions` MAY split that subscription's regions
+across several subscriptions, each with its own `id`, and open the stream
+again. That is the one case where instances with the same address and state
+have more than one subscription.
 
 The request MUST be sealed exactly like a region request ([§7.3](#73-signatures), [§7.4](#74-encryption)). It is a
 read, so it has no nonce.
 
 **The client declares the whole set.** The client works the set out from what
 is on screen: for each live component instance, each region that holds a
-fragment from a good answer, grouped by address and by the state the answer
-was rendered for. Only answered regions are watched, so a session already
+fragment from a good answer, grouped by address and by the canonical state
+the answer was rendered for. Only answered regions are watched, so a session already
 exists when the stream opens. Whenever the set changes (a region gets its
 first answer, a state changes, an instance unmounts) the client MUST open the
 stream again with the new set, signed afresh. An empty set MUST close it. A
 change that leaves the set as it was does nothing, so subscription ids are
-derived from the address and the canonical state, and an unchanged set is
+derived from the address and the canonical state ([§5.1](#51-client-state)), and an unchanged set is
 recognizably unchanged. Changes that land together, such as a navigation
 that unmounts one screen and mounts another, make one reopen.
 
@@ -1214,7 +1334,8 @@ The client MUST verify `sig`, then decrypt, then gunzip when `enc` is `gzip`,
 then check that `subscription` is one it opened this stream with and that
 `region` is one of that subscription's. An event that fails any of those
 checks is logged and MUST be dropped, never acted on. Then it MUST act only on
-instances of that address that asked with that subscription's state:
+instances of that address that asked with that subscription's canonical
+state:
 
 - On a `signal`, each instance whose token for the region differs from the
   signal's is marked to fetch the region again, exactly as a refresh would
@@ -1427,8 +1548,8 @@ not see, just as a shared region must not ([§8.1](#81-the-push-stream)).
 
 **Applying it.** After the checks every event gets ([§8.1](#81-the-push-stream)), a client applies a
 patch to each instance of that address that asked with that subscription's
-state, one instance at a time. It MUST apply the patch only if all of these
-hold:
+canonical state, one instance at a time. It MUST apply the patch only if all
+of these hold:
 
 - the instance is showing a tree it got from the server for that region, not
   its placeholder;
@@ -1526,7 +1647,7 @@ effective TTL in seconds. A server MUST answer a malformed `cache` with
 component. The push stream and the route list never carry `cache`.
 
 A client SHOULD declare only a copy made for the same address, region and
-state as the request, and whose age by its own clock is within its effective
+canonical state ([§5.1](#51-client-state)) as the request, and whose age by its own clock is within its effective
 TTL. It MAY paint an older copy while the request is in flight, but MUST NOT
 declare one.
 
@@ -1551,6 +1672,7 @@ came with:
 ```json
 {
   "protocol": 1,
+  "delta": {},
   "fragments": {"stats": {"cached": true}}
 }
 ```
@@ -2004,7 +2126,8 @@ server MUST answer `404 unknown_action`. In particular:
   make the server load a record by sending its id where an object was
   expected.
 
-An argument the method cannot take MUST be a `422`, not a `500`. Everything in
+An argument the method cannot take MUST be a `422 invalid_request`, not a
+`500`. Everything in
 `args` is untrusted input in the same sense as client state ([§5.1](#51-client-state)): an action
 MUST authorize against the bearer identity ([§7.5](#75-authentication-is-separate)), never against what it was
 sent.
@@ -2058,13 +2181,16 @@ region. It MUST skip a region with a request that went out after this one,
 because that answer is newer. A painted part supersedes any older request
 for its region still in flight. Each part MUST be checked as a region render is
 ([§9.4](#94-fragments-the-client-cannot-render)), and one that is refused is not surfaced as a failure. A name that is
-not a region of the component is a server error, and the server answers `500`.
+not a region of the component is a server error, and the server answers
+`500 invalid_redraw`.
 
 **Other components in this client, a hint.** The method names another
 component's address and at most one of its regions. Leaving the region out
 means all of them. The server does not have that component's state, so it
 does not render it. It only names it, after checking the address and region
-exist:
+exist. One that does not exist is a server error too, and also gets
+`500 invalid_redraw`, not `404 unknown_component`: the request named nothing
+wrong, the server's own method did:
 
 ```json
 {
@@ -2091,7 +2217,8 @@ exist:
 
 A hint for a whole component covers hints for its regions, and an answer
 MUST carry at most 16 hints and 16 inline regions besides the action's own,
-so at most 17 parts.
+so at most 17 parts. A method that asks for more is a server error,
+`500 invalid_redraw`.
 
 In the client a hint is handled like a stream signal ([§8.1](#81-the-push-stream)): every live
 instance at that address that drew the region is marked, and fetches it with
@@ -2226,10 +2353,11 @@ method of that name, and answers with `delta` ([§5.4](#54-state-sent-back)):
 
 The client decides which of the component's regions a call redraws, if any,
 by naming them in `regions`: a list of distinct region names, where an empty
-list means none. The server checks it before the method runs. A name that is
-not a region of the component is `422 invalid_request`, and a list over the
-server's limit on regions per request ([§3.1](#31-when-the-client-asks)) is `422 too_many_regions`. In
-either case the method does not run. With no `regions`, a call changes state
+list means none. The server checks it before the method runs, as [§3](#3-regions) says:
+a malformed name is `422 invalid_request`, and a name that is not a region
+of the component is `404 unknown_component`. A list over the server's limit
+on regions per request ([§3.1](#31-when-the-client-asks)) is `422 too_many_regions`. In each case the
+method does not run. With no `regions`, a call changes state
 only, unless the method itself asks for more.
 
 The answer carries `fragments` for the regions the request named and the
@@ -2262,7 +2390,8 @@ compressed, fragments or not, even with an empty delta ([§7.4](#74-encryption))
 
 A server MUST run `method` only under the rules of [§10.2](#102-server-actions-the-default). The method must be
 on the same list a tap's action is checked against. Otherwise the server
-answers `404 unknown_method`. An unknown address is `404 unknown_component`.
+answers `404 unknown_method`. An unknown address, or an unknown region in
+`regions`, is `404 unknown_component`.
 A malformed body, a member it does not know ([§5.3](#53-compatibility)), or state or args that do
 not fit is `422 invalid_request`.
 
@@ -2280,7 +2409,7 @@ It goes to `{base}/upload`, signed and encrypted like everything else and with
 a nonce ([§7.3](#73-signatures)). The decrypted body is a frame rather than JSON:
 
 ```
-uint32, big-endian   N, the length of the header, at most 1 MiB
+uint32, big-endian   N, the length of the header, at most 1 MiB (1,048,576 bytes)
 N bytes              the header, a JSON object
 the rest             the file, exactly `size` bytes
 ```
@@ -2325,8 +2454,8 @@ Errors are a call's, plus:
 |---|---|---|
 | 413 | `{"error":"too_large"}` | Over the method's limit or the server's. When the server can tell from the size alone, it refuses before decrypting, and that 413 is plain and unsigned ([§7.3](#73-signatures)). |
 | 415 | `{"error":"unsupported_type"}` | The sniffed type is not one the method accepts. |
-| 404 | `{"error":"unknown_method"}` | Not a method exposed for uploads, or the args do not fit. |
-| 422 | `{"error":"invalid_request"}` | A bad frame, a `size` that is not the bytes sent, an empty file, or a header member the server does not know. |
+| 404 | `{"error":"unknown_method"}` | Not a method exposed for uploads. A method exposed only for actions and calls does not count. |
+| 422 | `{"error":"invalid_request"}` | A bad frame, a `size` that is not the bytes sent, an empty file, a header member the server does not know, or args that do not fit, as for a call. |
 
 Failures are surfaced as for a call, with the method name as the action and
 no region. Two reasons are only for uploads, and both mean nothing was sent:
@@ -2334,13 +2463,13 @@ no region. Two reasons are only for uploads, and both mean nothing was sent:
 - `unreadable`: the file the app named cannot be read as a regular file. A
   directory, a symbolic link, anything that is not a local file, and a path
   with a NUL byte MUST all be refused.
-- `too_large`: the file is over the client's own limit. 20 MB is
-  RECOMMENDED.
+- `too_large`: the file is over the client's own limit. 20 MiB
+  (20,971,520 bytes) is RECOMMENDED.
 
 A file the server finds too big or the wrong type is `server`, with status 413
 or 415.
 
-An upload waits for its answer longer than an action does, since 20 MB on a
+An upload waits for its answer longer than an action does, since 20 MiB on a
 slow network can take a while. 120 seconds is RECOMMENDED, with the HTTP
 timeout of the transport longer again, so the client's own timer fires first.
 
@@ -2350,9 +2479,44 @@ record is future work.
 
 ## 11. Versioning
 
-`protocol` in the handshake is an integer. A server that does not speak the
-client's version MUST say so at handshake, not mid-render. Clients support exactly
-one version per build; servers MAY support several.
+The protocol version is a positive integer. This document defines version 1.
+
+**When it changes.** The version goes up only for a change that an older
+peer could get wrong: a member whose meaning changes, something that was
+allowed and is now refused, or a change to the handshake, signing or
+encryption. A change an older peer can safely ignore does not need a new
+version, and has its own way in instead:
+
+- a new member in an object, which a receiver that does not know it ignores
+  ([§5.3](#53-compatibility));
+- a new fragment encoding, offered in the handshake's `accepts` ([§9](#9-fragment-format));
+- a new element type, offered in the handshake's `elements` ([§9.7](#97-element-types)).
+
+**Drafts.** Until 1.0, version 1 means whatever the current draft says, and
+two drafts are not promised to work with each other even though both send
+`1`. An implementation SHOULD say which draft it follows. From 1.0 on,
+version 1 means exactly what 1.0 says, and the next incompatible change is
+version 2.
+
+**Agreeing a version.** A client and a server MAY each speak several
+versions. The client offers every version it speaks in the handshake's
+`protocols`, and the server picks the highest one it also speaks and
+answers with it in `protocol` ([§6.1](#61-handshake)). With none in common the server
+refuses the handshake with `422 unsupported_protocol`, listing the versions
+it does speak, and the client surfaces an error. There is no separate way to
+ask a server which versions it speaks: the handshake is how a client finds
+out, and it costs no extra round trip.
+
+The handshake is not signed, so whoever can tamper with it could also strip
+the higher versions from `protocols`. That is no worse than what tampering
+with the handshake already allows ([§7.1](#71-threat-model)).
+
+**After the handshake.** The session is made with one version, and it keeps
+it until it ends. The version travels in the `Asgard-Protocol` header of
+every request and every sealed response ([§6.2](#62-use-and-renewal)), and `protocol` in every
+body carries the same value. The `asgard/1` in the key derivation labels,
+signature tags and event labels of [§6](#6-sessions), [§7](#7-security) and [§8.1](#81-the-push-stream) is this version.
+A later version defines its own.
 
 ## 12. Server screens
 
@@ -2644,6 +2808,7 @@ there is no way to leave the app.
 - [RFC 8188](https://www.rfc-editor.org/rfc/rfc8188): Encrypted Content-Encoding for HTTP
 - [RFC 8259](https://www.rfc-editor.org/rfc/rfc8259): The JavaScript Object Notation (JSON) Data Interchange Format, STD 90
 - [RFC 8446](https://www.rfc-editor.org/rfc/rfc8446): The Transport Layer Security (TLS) Protocol Version 1.3
+- [RFC 8785](https://www.rfc-editor.org/rfc/rfc8785): JSON Canonicalization Scheme (JCS)
 - [RFC 9110](https://www.rfc-editor.org/rfc/rfc9110): HTTP Semantics, STD 97
 - [RFC 9421](https://www.rfc-editor.org/rfc/rfc9421): HTTP Message Signatures
 - [RFC 9530](https://www.rfc-editor.org/rfc/rfc9530): Digest Fields

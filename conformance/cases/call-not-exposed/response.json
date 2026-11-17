@@ -1,0 +1,8 @@
+{
+  "status": 404,
+  "body": {
+    "$partial": true,
+    "error": "unknown_method"
+  },
+  "sealed": true
+}

@@ -1,0 +1,6 @@
+{
+  "description": "A request past its expires is a plain 403.",
+  "sections": [
+    "§7.3"
+  ]
+}

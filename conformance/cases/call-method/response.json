@@ -1,0 +1,16 @@
+{
+  "status": 200,
+  "sealed": true,
+  "headers": {
+    "asgard-content-coding": "identity"
+  },
+  "body": {
+    "$partial": true,
+    "protocol": 1,
+    "delta": {
+      "count": 3
+    },
+    "fragments": "{{absent}}",
+    "refresh": "{{absent}}"
+  }
+}

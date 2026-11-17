@@ -1,0 +1,26 @@
+{
+  "status": 200,
+  "sealed": true,
+  "body": {
+    "$partial": true,
+    "fragments": {
+      "feed": {
+        "$partial": true,
+        "fragment": {
+          "type": "column",
+          "key": "items",
+          "children": [
+            "{{contains}}",
+            {
+              "type": "text",
+              "key": "{{string}}",
+              "props": {
+                "text": "{{=posted}}"
+              }
+            }
+          ]
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "description": "A render sent as POST with X-Asgard-Method: QUERY is answered.",
+  "sections": [
+    "§8"
+  ]
+}

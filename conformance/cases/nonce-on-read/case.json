@@ -1,0 +1,7 @@
+{
+  "description": "A read whose signature carries a nonce is refused with a sealed 422 invalid_request: a render without an action, then the route list.",
+  "sections": [
+    "§7.3",
+    "§7.6"
+  ]
+}

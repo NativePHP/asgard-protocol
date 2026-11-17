@@ -1,0 +1,7 @@
+{
+  "description": "Args that do not fit an upload method are 422 invalid_request, as for a call, not 404 unknown_method.",
+  "sections": [
+    "§10.5",
+    "§10.6"
+  ]
+}

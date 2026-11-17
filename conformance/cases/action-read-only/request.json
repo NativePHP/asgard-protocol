@@ -1,0 +1,23 @@
+{
+  "endpoint": "render",
+  "body": {
+    "protocol": 1,
+    "component": "conformance.counter",
+    "regions": [
+      "count"
+    ],
+    "state": {
+      "count": 1,
+      "user_id": 7
+    },
+    "action": {
+      "call": "setUser",
+      "args": [
+        9
+      ]
+    },
+    "read_only": [
+      "user_id"
+    ]
+  }
+}

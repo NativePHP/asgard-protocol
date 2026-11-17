@@ -1,0 +1,6 @@
+{
+  "description": "On connect, a region with no token gets an event: a signal, or a fragment for a shared region.",
+  "sections": [
+    "§8.1"
+  ]
+}

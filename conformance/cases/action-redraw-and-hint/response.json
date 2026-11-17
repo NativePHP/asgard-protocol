@@ -1,0 +1,42 @@
+{
+  "status": 200,
+  "sealed": true,
+  "body": {
+    "$partial": true,
+    "protocol": 1,
+    "delta": {
+      "count": 2
+    },
+    "fragments": {
+      "count": {
+        "version": "{{version?}}",
+        "made_at": "{{made_at}}",
+        "max_age": "{{int?}}",
+        "fragment": {
+          "type": "text",
+          "key": "count",
+          "props": {
+            "text": "Count: 2"
+          }
+        }
+      },
+      "label": {
+        "version": "{{version?}}",
+        "made_at": "{{made_at}}",
+        "max_age": "{{int?}}",
+        "fragment": {
+          "type": "text",
+          "props": {
+            "text": "L"
+          }
+        }
+      }
+    },
+    "refresh": [
+      {
+        "component": "conformance.other",
+        "region": "note"
+      }
+    ]
+  }
+}

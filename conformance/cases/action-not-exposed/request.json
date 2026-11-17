@@ -1,0 +1,17 @@
+{
+  "endpoint": "render",
+  "body": {
+    "protocol": 1,
+    "component": "conformance.counter",
+    "regions": [
+      "count"
+    ],
+    "state": {
+      "count": 5
+    },
+    "action": {
+      "call": "reset",
+      "args": []
+    }
+  }
+}

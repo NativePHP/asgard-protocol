@@ -1,0 +1,6 @@
+{
+  "description": "A size that is not the bytes sent is 422 invalid_request.",
+  "sections": [
+    "§10.6"
+  ]
+}

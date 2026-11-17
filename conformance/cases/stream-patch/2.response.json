@@ -1,0 +1,45 @@
+{
+  "status": 200,
+  "exact": true,
+  "events": [
+    {
+      "$anyOf": [
+        {
+          "event": "patch",
+          "data": {
+            "$partial": true,
+            "protocol": 1,
+            "subscription": "s1",
+            "region": "feed",
+            "from": "{{=v}}",
+            "version": "{{!=v}}",
+            "patch": {
+              "op": "prepend",
+              "target": "items",
+              "nodes": [
+                {
+                  "type": "text",
+                  "key": "{{string}}",
+                  "props": {
+                    "text": "{{=posted}}"
+                  }
+                }
+              ],
+              "keep": "{{int?}}"
+            }
+          }
+        },
+        {
+          "event": "signal",
+          "data": {
+            "$partial": true,
+            "protocol": 1,
+            "subscription": "s1",
+            "region": "feed",
+            "version": "{{!=v}}"
+          }
+        }
+      ]
+    }
+  ]
+}

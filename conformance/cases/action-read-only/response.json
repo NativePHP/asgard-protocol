@@ -1,0 +1,32 @@
+{
+  "status": [
+    200,
+    500
+  ],
+  "sealed": true,
+  "body_by_status": {
+    "200": {
+      "$partial": true,
+      "protocol": 1,
+      "delta": {},
+      "fragments": {
+        "count": {
+          "version": "{{version?}}",
+          "made_at": "{{made_at}}",
+          "max_age": "{{int?}}",
+          "fragment": {
+            "type": "text",
+            "key": "count",
+            "props": {
+              "text": "Count: 1"
+            }
+          }
+        }
+      }
+    },
+    "500": {
+      "$partial": true,
+      "error": "read_only_changed"
+    }
+  }
+}

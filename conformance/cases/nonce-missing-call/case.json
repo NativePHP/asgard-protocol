@@ -1,0 +1,6 @@
+{
+  "description": "A method call whose signature has no nonce is a plain 403 nonce_required.",
+  "sections": [
+    "§7.3"
+  ]
+}

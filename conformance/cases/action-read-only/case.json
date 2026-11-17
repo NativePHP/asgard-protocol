@@ -1,0 +1,6 @@
+{
+  "description": "A member named in read_only never comes back in delta. In development the server may fail with 500 read_only_changed instead.",
+  "sections": [
+    "§5.4"
+  ]
+}

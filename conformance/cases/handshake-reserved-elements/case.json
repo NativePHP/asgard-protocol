@@ -1,0 +1,8 @@
+{
+  "description": "A reserved type in elements is ignored, not refused, and an advertised type can then be rendered.",
+  "sections": [
+    "§6.1",
+    "§9.3",
+    "§9.7"
+  ]
+}

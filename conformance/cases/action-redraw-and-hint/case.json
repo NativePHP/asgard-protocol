@@ -1,0 +1,6 @@
+{
+  "description": "An action can redraw another region inline and hint a region of another component.",
+  "sections": [
+    "§10.2"
+  ]
+}

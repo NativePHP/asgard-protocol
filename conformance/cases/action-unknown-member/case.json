@@ -1,0 +1,8 @@
+{
+  "description": "An action object follows slot rules, so an unknown member is refused with 422 invalid_request.",
+  "sections": [
+    "§5.3",
+    "§10.1",
+    "§10.2"
+  ]
+}

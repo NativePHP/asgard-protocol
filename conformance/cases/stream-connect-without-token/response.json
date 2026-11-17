@@ -1,0 +1,34 @@
+{
+  "status": 200,
+  "exact": true,
+  "events": [
+    {
+      "event": "signal",
+      "data": {
+        "$partial": true,
+        "protocol": 1,
+        "subscription": "s1",
+        "region": "count",
+        "version": "{{version}}"
+      }
+    },
+    {
+      "event": "fragment",
+      "data": {
+        "$partial": true,
+        "protocol": 1,
+        "subscription": "s1",
+        "region": "shared",
+        "version": "{{version}}",
+        "made_at": "{{made_at}}",
+        "max_age": "{{int?}}",
+        "fragment": {
+          "type": "text",
+          "props": {
+            "text": "Shared X"
+          }
+        }
+      }
+    }
+  ]
+}

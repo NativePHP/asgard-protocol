@@ -1,0 +1,7 @@
+{
+  "description": "A body encrypted under another aes128gcm keyid is a plain 403.",
+  "sections": [
+    "§7.4",
+    "§7.6"
+  ]
+}

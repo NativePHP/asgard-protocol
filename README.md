@@ -80,6 +80,8 @@ The reference implementations are built by [NativePHP](https://nativephp.com):
 
 - [protocol.md](protocol.md), the specification
 - [schema/fragment.schema.json](schema/fragment.schema.json), a JSON Schema for the fragment format in §9
+- [schema/constants.json](schema/constants.json), every number, name and enum in the spec with the section it comes from, and [schema/constants.schema.json](schema/constants.schema.json), its schema
+- [conformance/](conformance/README.md), a conformance suite: byte-exact vectors, golden server cases, the fixture components a server adds to run them ([FIXTURES.md](conformance/FIXTURES.md)), and a Node.js runner with no dependencies
 - [rationale.md](rationale.md), non-normative background, including the vendor evidence for the QUERY fallback
 - [CHANGELOG.md](CHANGELOG.md)
 

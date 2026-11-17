@@ -1,0 +1,7 @@
+{
+  "description": "A body that does not match its Content-Digest is a plain 403.",
+  "sections": [
+    "§7.3",
+    "§7.6"
+  ]
+}

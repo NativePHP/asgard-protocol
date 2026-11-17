@@ -1,0 +1,22 @@
+{
+  "endpoint": "render",
+  "body": {
+    "protocol": 1,
+    "component": "conformance.counter",
+    "regions": [
+      "count"
+    ],
+    "state": {
+      "count": 1
+    },
+    "action": {
+      "call": "increment",
+      "args": [
+        1
+      ]
+    }
+  },
+  "seal": {
+    "nonce": false
+  }
+}

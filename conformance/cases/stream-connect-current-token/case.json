@@ -1,0 +1,6 @@
+{
+  "description": "On connect, a region whose token is current gets no event, and the stream pings every 5 seconds.",
+  "sections": [
+    "§8.1"
+  ]
+}

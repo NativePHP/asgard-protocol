@@ -1,0 +1,8 @@
+{
+  "status": 415,
+  "body": {
+    "$partial": true,
+    "error": "unsupported_type"
+  },
+  "sealed": true
+}

@@ -1,0 +1,8 @@
+{
+  "description": "An Asgard-Protocol header with a version the server does not speak, even when signed, is the unsigned early rejection 422 unsupported_protocol.",
+  "sections": [
+    "§6.2",
+    "§7.3",
+    "§7.6"
+  ]
+}
