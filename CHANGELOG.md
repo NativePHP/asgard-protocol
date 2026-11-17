@@ -1,6 +1,6 @@
 # Changelog
 
-## Draft 4 (unreleased)
+## Draft 4 (2026-11-17)
 
 - New `schema/constants.json`, with its own schema, holding the spec's
   numbers, names and enums with the section each comes from. New

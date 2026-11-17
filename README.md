@@ -65,7 +65,7 @@ If you want arbitrary UI, a whole website, or something to run in a browser, use
 
 ## Status
 
-Draft 3. It is not stable and may change incompatibly before 1.0. We would like to hear from anyone implementing it, so please open an issue.
+Draft 4. It is not stable and may change incompatibly before 1.0. We would like to hear from anyone implementing it, so please open an issue.
 
 ## Implementations
 
@@ -73,8 +73,8 @@ The protocol is written so that the server half can be anything. A Rails, Django
 
 The reference implementations are built by [NativePHP](https://nativephp.com):
 
-- `nativephp/midgard`, the client, for apps built with [NativePHP for Mobile](https://nativephp.com/docs/mobile)
-- `nativephp/asgard`, the server, a Laravel package
+- [nativephp/midgard](https://github.com/NativePHP/midgard), the client, for apps built with [NativePHP for Mobile](https://nativephp.com/docs/mobile)
+- [nativephp/asgard](https://github.com/NativePHP/asgard), the server, a Laravel package
 
 ## What's here
 
