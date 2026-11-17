@@ -136,6 +136,9 @@
   server. They keep answers comparable, but deflate builds differ, so a
   receiver checks a compressed body by inflating it, never by comparing
   bytes.
+- §9.7 says a type name describes what a node is for, not which component
+  draws it. Each client maps the names, `class` and props to its own
+  platform's components. No wire change.
 
 ## Draft 3 (2026-11-14)
 
